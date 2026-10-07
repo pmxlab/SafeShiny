@@ -1,0 +1,7 @@
+^.*\.Rproj$
+^\.Rproj\.user$
+^build\.sh$
+^\.github$
+^LICENSE\.md$
+^SafeShiny\.Rcheck$
+^.*\.tar\.gz$

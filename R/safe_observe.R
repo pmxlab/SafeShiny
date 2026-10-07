@@ -1,0 +1,223 @@
+#' Build the shared error/timing handling pieces for SafeObserve()/SafeObserveEvent()
+#'
+#' Not exported. Both public functions delegate here so the tryCatch/timing wiring exists in
+#' exactly one place.
+#'
+#' @param label character string, the label to record timing under and to report in error
+#'   messages.
+#' @param domain a Shiny reactive domain (session object), or \code{NULL}.
+#' @param onError optional function called with the caught condition.
+#' @param trackTime logical, whether to record execution time via
+#'   \code{\link{.recordSafeShinyTiming}}.
+#' @param quiet logical, whether to suppress the default \code{message()} logged when an error
+#'   is caught (the error is still caught either way - this only controls the console/log line).
+#' @param context character string, used in the default logged message (e.g. \code{"SafeObserve"}).
+#'
+#' @return a list with elements \code{recordFn} (function(status, startTime)) and
+#'   \code{errorHandler} (function(e, startTime)), both to be spliced into the generated
+#'   \code{tryCatch} expression via \code{bquote()}.
+#'
+#' @details
+#' \code{errorHandler()} is deliberately a *single* handler covering both the
+#' \code{"shiny.silent.error"} case (\code{shiny::req()}/\code{validate()}'s intentional silent
+#' stop) and genuine errors, rather than two separate named \code{tryCatch} handlers
+#' (\code{shiny.silent.error = ...}, \code{error = ...}). Re-throwing a condition from inside one
+#' handler of a \code{tryCatch} call can itself be caught by a *sibling* handler of that very
+#' same call - a real, surprising, base R behavior confirmed outside of Shiny entirely (not a
+#' Shiny quirk) - so two sibling handlers would have the silent-stop handler's own \code{stop(e)}
+#' immediately re-caught by the generic \code{error} handler one line down, defeating the whole
+#' point. Checking \code{inherits(e, "shiny.silent.error")} inside one handler and re-throwing
+#' from there avoids that self-recapture entirely, since there is no sibling handler left at that
+#' same level to catch it.
+#' @keywords internal
+.safeShinyBuildHandlers <- function(label, domain, onError, trackTime, quiet, context) {
+  recordFn <- function(status, startTime) {
+    if (!isTRUE(trackTime)) {
+      return(invisible(NULL))
+    }
+    elapsed <- as.numeric(difftime(Sys.time(), startTime, units = "secs"))
+    .recordSafeShinyTiming(domain = domain, label = label, elapsed = elapsed, status = status)
+  }
+
+  errorHandler <- function(e, startTime) {
+    if (inherits(e, "shiny.silent.error")) {
+      recordFn("silent", startTime)
+      stop(e)
+    }
+
+    recordFn("error", startTime)
+    if (!isTRUE(quiet)) {
+      message("[SafeShiny] ", context, " (", label, ") caught an error: ", conditionMessage(e))
+    }
+    if (is.function(onError)) {
+      onError(e)
+    }
+    invisible(NULL)
+  }
+
+  list(recordFn = recordFn, errorHandler = errorHandler)
+}
+
+#' Safe version of shiny::observe() that catches errors instead of crashing the session
+#'
+#' @description
+#' A drop-in replacement for \code{shiny::observe()}: the observer body is evaluated inside a
+#' \code{tryCatch()} so that an uncaught error inside it is caught and reported instead of
+#' propagating and terminating the whole Shiny session - see the "User Guide" vignette
+#' (\code{vignette("SafeShiny", package = "SafeShiny")}) for why this matters for observers (but
+#' not for reactives consumed only by render outputs, which Shiny already handles gracefully on
+#' its own).
+#'
+#' \code{shiny::req()}/\code{shiny::validate()}'s intentional silent-stop condition
+#' (\code{"shiny.silent.error"}) is always re-raised unchanged, never caught/reported as an
+#' error - \code{SafeObserve()} only changes behavior for genuine, unclassed errors.
+#'
+#' @param x the observer body, exactly as for \code{shiny::observe()}.
+#' @param onError optional function called with the caught condition object whenever a genuine
+#'   error is caught (not called for a \code{shiny::req()}/\code{validate()} silent stop). Use
+#'   for application-specific handling, e.g. recording the failure against a specific piece of
+#'   application state, or showing a \code{shiny::showNotification()}.
+#' @param trackTime logical, default \code{FALSE}. When \code{TRUE}, the wall-clock time spent
+#'   evaluating \code{x} is recorded (whether it finishes normally, is caught by \code{onError},
+#'   or hits a \code{req()}/\code{validate()} silent stop - all three consume real time) - see
+#'   \code{\link{GetSafeShinyTiming}}/\code{\link{SummarizeSafeShinyTiming}}.
+#' @param label optional character string identifying this observer for timing/error-logging
+#'   purposes. Defaults to a short, truncated deparse of \code{x} when not supplied.
+#' @param quiet logical, default \code{FALSE}. When \code{FALSE}, a caught error is also reported
+#'   via \code{message()} (in addition to calling \code{onError}, if supplied). Set \code{TRUE}
+#'   to silence this and rely entirely on \code{onError} for error reporting.
+#' @param env,quoted,...,suspended,priority,domain,autoDestroy passed through to
+#'   \code{shiny::observe()} unchanged - see \code{\link[shiny]{observe}}.
+#'
+#' @return the \code{shiny::Observer} object, exactly as for \code{shiny::observe()}.
+#'
+#' @examples
+#' \dontrun{
+#' library(shiny)
+#' library(SafeShiny)
+#'
+#' server <- function(input, output, session) {
+#'   SafeObserve({
+#'     if (input$boom > 0) stop("deliberate error")
+#'   }, onError = function(e) showNotification(conditionMessage(e), type = "error"))
+#' }
+#' }
+#'
+#' @importFrom shiny observe getDefaultReactiveDomain
+#' @export
+SafeObserve <- function(x, onError = NULL, trackTime = FALSE, label = NULL, quiet = FALSE,
+                         env = parent.frame(), quoted = FALSE, ...,
+                         suspended = FALSE, priority = 0,
+                         domain = shiny::getDefaultReactiveDomain(), autoDestroy = TRUE) {
+  if (!quoted) {
+    x <- substitute(x)
+  }
+  if (is.null(label)) {
+    label <- .safeShinyDefaultLabel(x)
+  }
+
+  handlers <- .safeShinyBuildHandlers(
+    label = label, domain = domain, onError = onError, trackTime = trackTime, quiet = quiet,
+    context = "SafeObserve"
+  )
+
+  wrapped <- bquote({
+    .safeShiny_start_time <- Sys.time()
+    tryCatch(
+      {
+        .safeShiny_result <- .(x)
+        .(handlers$recordFn)("ok", .safeShiny_start_time)
+        .safeShiny_result
+      },
+      error = function(.safeShiny_e) {
+        .(handlers$errorHandler)(.safeShiny_e, .safeShiny_start_time)
+      }
+    )
+  })
+
+  shiny::observe(
+    wrapped, env = env, quoted = TRUE, ...,
+    label = label, suspended = suspended, priority = priority,
+    domain = domain, autoDestroy = autoDestroy
+  )
+}
+
+#' Safe version of shiny::observeEvent() that catches errors instead of crashing the session
+#'
+#' @description
+#' Same as \code{\link{SafeObserve}}, but for \code{shiny::observeEvent()}. Only
+#' \code{handlerExpr} (the code that runs when the event fires) is wrapped in \code{tryCatch} -
+#' \code{eventExpr} (the trigger being watched) is left untouched, since it's typically just a
+#' value read and changing its error semantics could alter trigger-detection behavior.
+#'
+#' @inheritParams SafeObserve
+#' @param eventExpr the expression to watch for changes, exactly as for
+#'   \code{shiny::observeEvent()}.
+#' @param handlerExpr the code to run when \code{eventExpr} changes - this is the part wrapped
+#'   in \code{tryCatch} and, when \code{trackTime = TRUE}, timed.
+#' @param event.env,event.quoted,handler.env,handler.quoted,...,ignoreNULL,ignoreInit,once passed
+#'   through to \code{shiny::observeEvent()} unchanged - see \code{\link[shiny]{observeEvent}}.
+#' @param suspended,priority,domain,autoDestroy passed through to \code{shiny::observeEvent()}
+#'   unchanged - see \code{\link[shiny]{observeEvent}}.
+#'
+#' @return the \code{shiny::Observer} object, exactly as for \code{shiny::observeEvent()}.
+#'
+#' @examples
+#' \dontrun{
+#' library(shiny)
+#' library(SafeShiny)
+#'
+#' server <- function(input, output, session) {
+#'   SafeObserveEvent(input$boom, {
+#'     stop("deliberate error")
+#'   }, onError = function(e) showNotification(conditionMessage(e), type = "error"))
+#' }
+#' }
+#'
+#' @importFrom shiny observeEvent getDefaultReactiveDomain
+#' @export
+SafeObserveEvent <- function(eventExpr, handlerExpr, onError = NULL, trackTime = FALSE,
+                              label = NULL, quiet = FALSE,
+                              event.env = parent.frame(), event.quoted = FALSE,
+                              handler.env = parent.frame(), handler.quoted = FALSE, ...,
+                              suspended = FALSE, priority = 0,
+                              domain = shiny::getDefaultReactiveDomain(), autoDestroy = TRUE,
+                              ignoreNULL = TRUE, ignoreInit = FALSE, once = FALSE) {
+  if (!event.quoted) {
+    eventExpr <- substitute(eventExpr)
+  }
+  if (!handler.quoted) {
+    handlerExpr <- substitute(handlerExpr)
+  }
+  if (is.null(label)) {
+    label <- .safeShinyDefaultLabel(handlerExpr)
+  }
+
+  handlers <- .safeShinyBuildHandlers(
+    label = label, domain = domain, onError = onError, trackTime = trackTime, quiet = quiet,
+    context = "SafeObserveEvent"
+  )
+
+  wrappedHandlerExpr <- bquote({
+    .safeShiny_start_time <- Sys.time()
+    tryCatch(
+      {
+        .safeShiny_result <- .(handlerExpr)
+        .(handlers$recordFn)("ok", .safeShiny_start_time)
+        .safeShiny_result
+      },
+      error = function(.safeShiny_e) {
+        .(handlers$errorHandler)(.safeShiny_e, .safeShiny_start_time)
+      }
+    )
+  })
+
+  shiny::observeEvent(
+    eventExpr, wrappedHandlerExpr,
+    event.env = event.env, event.quoted = TRUE,
+    handler.env = handler.env, handler.quoted = TRUE, ...,
+    label = label, suspended = suspended, priority = priority,
+    domain = domain, autoDestroy = autoDestroy,
+    ignoreNULL = ignoreNULL, ignoreInit = ignoreInit, once = once
+  )
+}

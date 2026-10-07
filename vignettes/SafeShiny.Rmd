@@ -1,0 +1,154 @@
+---
+title: "User Guide"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{User Guide}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  eval = FALSE
+)
+```
+
+## The problem
+
+An uncaught error inside a plain `shiny::observe()` or `shiny::observeEvent()` terminates the
+whole Shiny session for that user. This is easy to miss, because the *other* common case - an
+error inside a `reactive()` that's consumed only by a render output - behaves completely
+differently and does **not** crash the session.
+
+Shiny's render functions (`renderPlot()`, `renderText()`, etc.) catch an error raised in their
+own body and convert it into the output's *value*: it gets serialized as
+`<div class="shiny-output-error">...</div>` and sent to the browser exactly like a successful
+render would be. From the reactive flush loop's point of view, that output "succeeded" - it
+produced a value, just an error-flagged one. Nothing propagates further, and every other
+output/observer in the session keeps working normally afterward.
+
+A bare `observe()`/`observeEvent()` has no such slot to catch into - its whole purpose is a side
+effect, not a value, so there's no DOM element to localize the error to. An uncaught error here
+keeps unwinding through Shiny's generic flush-loop logging, with no per-observer recovery path.
+In practice this can leave a session in a state where the browser's own connection indicator
+still shows "connected," but nothing updates again without a reload - indistinguishable from a
+crash as far as the user is concerned.
+
+There's a third, separate mechanism worth knowing about: `shiny::req()` and `shiny::validate()`
+deliberately throw a specially classed `shiny.silent.error` condition that Shiny's reactive
+machinery recognizes *everywhere* (outputs and observers alike) as "stop evaluating silently -
+this isn't a bug, don't show anything, don't log." That's intentional control flow, not an error
+to report - and it's why a naive `tryCatch(error = ...)` wrapper around an observer body would be
+wrong: it would also catch `req()`/`validate()`'s silent stops and misreport every one of them as
+a real failure.
+
+## SafeObserve() / SafeObserveEvent()
+
+`SafeObserve()` and `SafeObserveEvent()` are drop-in replacements for `shiny::observe()` and
+`shiny::observeEvent()` that catch genuine errors - and only genuine errors, correctly passing
+`shiny.silent.error` through unchanged - so a bug in one observer degrades gracefully instead of
+taking down the whole session.
+
+```{r}
+library(shiny)
+library(SafeShiny)
+
+# Before: a bug here disconnects every user in this session.
+server <- function(input, output, session) {
+  observeEvent(input$go, {
+    result <- 1 / input$denominator # errors if denominator is non-numeric/zero in some paths
+    showNotification(paste("Result:", result))
+  })
+}
+
+# After: the same bug just shows a notification and logs the error - the session survives.
+server <- function(input, output, session) {
+  SafeObserveEvent(input$go, {
+    result <- 1 / input$denominator
+    showNotification(paste("Result:", result))
+  }, onError = function(e) {
+    showNotification(paste("Something went wrong:", conditionMessage(e)), type = "error")
+  })
+}
+```
+
+Both functions accept every argument their `shiny` counterparts do (`ignoreInit`, `once`,
+`priority`, `domain`, ...), plus:
+
+- `onError` - a function called with the caught condition, for application-specific handling.
+- `quiet` - set `TRUE` to suppress the default `message()` logged when an error is caught (you
+  still get `onError`, if supplied).
+- `trackTime`/`label` - see the next section.
+
+`req()`/`validate()` keep working exactly as before - `SafeObserveEvent(input$go, { req(input$x); ... })`
+behaves identically to the plain `shiny::observeEvent()` version when `input$x` isn't ready yet.
+
+## Execution-time tracking
+
+A long-standing, hard-to-answer question when an app feels slow is: *how much of that time is
+actually spent in my own business logic, versus Shiny's own reactive-graph bookkeeping
+(invalidation, scheduling, flushing)?* Profiling tools like `Rprof()` or `reactlog` can show call
+counts and stack traces, but splitting "my code" from "Shiny's machinery" cleanly from that
+output is its own, separate piece of work - exactly the kind of split a team investigating a
+slow file-upload path might want to make but not have time to finish measuring directly.
+
+Passing `trackTime = TRUE` to `SafeObserve()`/`SafeObserveEvent()` times the wrapped expression
+(whether it finishes normally, is caught by `onError`, or hits a `req()`/`validate()` silent stop
+- all three consume real wall-clock time) and records it, keyed to the current Shiny session so
+concurrent users' timings never mix.
+
+```{r}
+server <- function(input, output, session) {
+  SafeObserveEvent(input$upload, {
+    processUploadedFile(input$upload$datapath)
+  }, trackTime = TRUE, label = "process_upload")
+
+  SafeObserveEvent(input$recompute, {
+    recomputeDownstreamValues()
+  }, trackTime = TRUE, label = "recompute")
+
+  observeEvent(input$show_timing, {
+    print(SummarizeSafeShinyTiming(session = session))
+  })
+}
+```
+
+`GetSafeShinyTiming()` returns a per-label summary (call count, total/mean/last elapsed time).
+`SummarizeSafeShinyTiming()` goes one step further and compares the sum of everything tracked
+against the wall-clock time elapsed since the first tracked call in the session:
+
+```{r}
+summ <- SummarizeSafeShinyTiming(session = session)
+print(summ)
+#> SafeShiny timing summary
+#>   Tracked user-code time: 2.341s across 2 label(s)
+#>   Wall-clock elapsed since first tracked call: 3.102s
+#>   Approx. untracked time (Shiny overhead + anything not wrapped): 0.761s
+#>   NOTE: 'untracked time' only approximates Shiny's own reactive-graph overhead once
+#>         EVERY relevant observer in this session is wrapped with trackTime = TRUE -
+#>         otherwise it also includes time spent in anything left unwrapped.
+```
+
+**The caveat in that last line matters.** `untracked_time` is `wall_clock_elapsed -
+total_tracked_time` - it is only a meaningful estimate of genuine Shiny reactive-graph overhead
+once *every* relevant observer/reactive in the session's critical path is wrapped with
+`trackTime = TRUE`. If some business logic runs inside an un-wrapped `observeEvent()` or
+`reactive()`, its time ends up lumped into `untracked_time` too, and you'll overestimate how much
+of the gap is really Shiny's own bookkeeping rather than just unmeasured application code.
+
+Use `GetSafeShinyTimingRaw()` if you need the per-call detail (including whether each call
+finished `"ok"`, hit a `"silent"` `req()`/`validate()` stop, or was caught as an `"error"`) rather
+than the aggregated-by-label view `GetSafeShinyTiming()` returns. Call `ResetSafeShinyTiming()` to
+clear a session's recorded timings (e.g. between two different scenarios you want to compare
+independently).
+
+## Roadmap
+
+This first release deliberately covers only `SafeObserve()`/`SafeObserveEvent()` - the specific
+gap where Shiny offers no built-in recovery path. A broader `SafeReactive()`/`SafeRenderPlot()`/
+`SafeDownloadHandler()` family has been discussed but is **not** implemented here yet, pending
+further validation of exactly where each one is actually needed (reactives consumed only by
+render outputs are, per the mechanism explained above, usually already safe without any extra
+wrapping - adding one unconditionally would be redundant, not protective).

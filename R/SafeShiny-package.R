@@ -1,0 +1,24 @@
+#' SafeShiny: Safe Observers for Shiny with Execution-Time Tracking
+#'
+#' @description
+#' An uncaught error inside a plain \code{shiny::observe()}/\code{shiny::observeEvent()}
+#' terminates the whole Shiny session. An error inside a \code{reactive()} consumed only by a
+#' render output does not - Shiny converts it into a localized, session-surviving error display
+#' instead. \pkg{SafeShiny} closes that gap for observers: \code{\link{SafeObserve}} and
+#' \code{\link{SafeObserveEvent}} are drop-in replacements for \code{shiny::observe()}/
+#' \code{shiny::observeEvent()} that catch errors instead of letting them propagate, while
+#' correctly re-raising \code{shiny::req()}/\code{shiny::validate()}'s intentional silent-stop
+#' conditions unchanged. Both also support optional execution-time tracking
+#' (\code{trackTime = TRUE}), to separate time spent in application business logic from time
+#' spent in Shiny's own reactive-graph maintenance - see \code{\link{GetSafeShinyTiming}} and
+#' \code{\link{SummarizeSafeShinyTiming}}.
+#'
+#' See the "User Guide" vignette (\code{vignette("SafeShiny", package = "SafeShiny")}) for the
+#' full explanation and worked examples.
+#'
+#' @keywords internal
+"_PACKAGE"
+
+## usethis namespace: start
+## usethis namespace: end
+NULL
