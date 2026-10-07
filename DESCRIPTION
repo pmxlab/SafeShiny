@@ -1,7 +1,7 @@
 Package: SafeShiny
 Type: Package
 Title: Safe Observers and Renderers for Shiny with Execution-Time Tracking
-Version: 0.2.0
+Version: 0.2.1
 Authors@R: c(person("Venelin", "Mitov", email = "vmitov@gmail.com",
                     role = c("aut", "cre", "cph")))
 Maintainer: Venelin Mitov <vmitov@gmail.com>
@@ -30,7 +30,8 @@ Suggests:
     knitr,
     rmarkdown,
     testthat (>= 3.0.0),
-    DT
+    DT,
+    htmltools
 Config/testthat/edition: 3
 VignetteBuilder: knitr
 URL: https://github.com/pmxlab/SafeShiny

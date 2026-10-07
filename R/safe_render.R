@@ -1,3 +1,77 @@
+#' Call a render-function generator as if invoked directly from `env`
+#'
+#' @description
+#' Some render-function generators (e.g. \code{DT::renderDT()}) resolve their own \code{...}
+#' arguments via \code{parent.frame()} \emph{inside their own body}, rather than via the explicit
+#' \code{env} parameter they otherwise honor for the main render expression. A plain
+#' \code{renderFunc(wrapped, env = env, quoted = TRUE, ...)} call makes the calling function's own
+#' frame - not \code{env} - the apparent direct caller from \code{renderFunc}'s perspective, so a
+#' \code{...} argument that's a closure referencing something only defined in \code{env} (e.g. a
+#' reactive) silently loses access to it when later re-evaluated. See pmxlab/SafeShiny#1.
+#'
+#' Fixed by constructing the call and evaluating it \emph{as if written directly in \code{env}}
+#' via \code{eval(call, envir = env)} - confirmed this makes a called function's own
+#' \code{parent.frame()} resolve to \code{env}, not wherever \code{eval()} itself was invoked
+#' from. \code{renderFunc} and \code{wrapped} (already-built language objects) are protected from
+#' being re-evaluated as code by binding them to hidden names in a throwaway child environment of
+#' \code{env} and referencing them by symbol, rather than embedding them directly in the
+#' constructed call. The caller's own \code{...} arguments are recovered via \code{match.call()}
+#' as their original, still-unevaluated expressions (not forced to values), so that a reactive
+#' closure stays genuinely reactive - re-evaluated by \code{renderFunc} on every render exactly as
+#' it would be for a direct, unwrapped call - rather than being frozen at whatever its value was
+#' when \code{SafeRender()} itself was first called.
+#'
+#' @param renderFunc the render-function generator to call.
+#' @param wrapped the already-built (via \code{bquote()}) wrapped render expression.
+#' @param env the environment the call should appear to originate from.
+#' @param dotsCall the calling frame's own \code{match.call(expand.dots = FALSE)}, used to recover
+#'   \code{...}'s original unevaluated expressions.
+#'
+#' @return whatever \code{renderFunc} returns.
+#' @keywords internal
+.safeShinyCallRenderFuncInEnv <- function(renderFunc, wrapped, env, dotsCall) {
+  evalEnv <- new.env(parent = env)
+  assign(".safeShiny_renderFunc__", renderFunc, envir = evalEnv)
+  assign(".safeShiny_wrapped__", wrapped, envir = evalEnv)
+  assign(".safeShiny_env__", env, envir = evalEnv)
+
+  dotsExprs <- as.list(dotsCall)[["..."]]
+
+  callExpr <- as.call(c(
+    quote(.safeShiny_renderFunc__),
+    quote(.safeShiny_wrapped__),
+    list(env = quote(.safeShiny_env__), quoted = TRUE),
+    dotsExprs
+  ))
+  eval(callExpr, envir = evalEnv)
+}
+
+#' Build the tryCatch-wrapped render expression shared by all Safe* render wrappers
+#' @keywords internal
+.safeShinyBuildWrappedExpr <- function(expr, onError, trackTime, label, quiet, context) {
+  if (is.null(label)) {
+    label <- .safeShinyDefaultLabel(expr)
+  }
+  domain <- shiny::getDefaultReactiveDomain()
+  handlers <- .safeShinyBuildHandlers(
+    label = label, domain = domain, onError = onError, trackTime = trackTime, quiet = quiet,
+    context = context, reraise = TRUE
+  )
+  bquote({
+    .safeShiny_start_time <- Sys.time()
+    tryCatch(
+      {
+        .safeShiny_result <- .(expr)
+        .(handlers$recordFn)("ok", .safeShiny_start_time)
+        .safeShiny_result
+      },
+      error = function(.safeShiny_e) {
+        .(handlers$errorHandler)(.safeShiny_e, .safeShiny_start_time)
+      }
+    )
+  })
+}
+
 #' Generic observability wrapper for any Shiny render function
 #'
 #' @description
@@ -51,34 +125,17 @@
 #' @export
 SafeRender <- function(renderFunc, expr, onError = NULL, trackTime = FALSE, label = NULL,
                         quiet = FALSE, env = parent.frame(), quoted = FALSE, ...) {
+  # Captured first, and used directly (not forwarded through another "..." layer) - match.call()
+  # only reliably recovers "..."'s original expressions one hop away from where they were
+  # actually written; forwarding them through a second function call (as SafeRenderPlot() etc.
+  # used to do, by calling this SafeRender() with their own "..." in turn) surfaces them as
+  # unresolvable ..1-style placeholders instead. See pmxlab/SafeShiny#1.
+  dotsCall <- match.call(expand.dots = FALSE)
   if (!quoted) {
     expr <- substitute(expr)
   }
-  if (is.null(label)) {
-    label <- .safeShinyDefaultLabel(expr)
-  }
-
-  domain <- shiny::getDefaultReactiveDomain()
-  handlers <- .safeShinyBuildHandlers(
-    label = label, domain = domain, onError = onError, trackTime = trackTime, quiet = quiet,
-    context = "SafeRender", reraise = TRUE
-  )
-
-  wrapped <- bquote({
-    .safeShiny_start_time <- Sys.time()
-    tryCatch(
-      {
-        .safeShiny_result <- .(expr)
-        .(handlers$recordFn)("ok", .safeShiny_start_time)
-        .safeShiny_result
-      },
-      error = function(.safeShiny_e) {
-        .(handlers$errorHandler)(.safeShiny_e, .safeShiny_start_time)
-      }
-    )
-  })
-
-  renderFunc(wrapped, env = env, quoted = TRUE, ...)
+  wrapped <- .safeShinyBuildWrappedExpr(expr, onError, trackTime, label, quiet, "SafeRender")
+  .safeShinyCallRenderFuncInEnv(renderFunc, wrapped, env, dotsCall)
 }
 
 #' Safe version of shiny::renderPlot() with an error-observability hook
@@ -111,13 +168,12 @@ SafeRender <- function(renderFunc, expr, onError = NULL, trackTime = FALSE, labe
 #' @export
 SafeRenderPlot <- function(expr, onError = NULL, trackTime = FALSE, label = NULL, quiet = FALSE,
                             env = parent.frame(), quoted = FALSE, ...) {
+  dotsCall <- match.call(expand.dots = FALSE)
   if (!quoted) {
     expr <- substitute(expr)
   }
-  SafeRender(
-    shiny::renderPlot, expr, onError = onError, trackTime = trackTime, label = label,
-    quiet = quiet, env = env, quoted = TRUE, ...
-  )
+  wrapped <- .safeShinyBuildWrappedExpr(expr, onError, trackTime, label, quiet, "SafeRenderPlot")
+  .safeShinyCallRenderFuncInEnv(shiny::renderPlot, wrapped, env, dotsCall)
 }
 
 #' Safe version of shiny::renderUI() with an error-observability hook
@@ -149,13 +205,12 @@ SafeRenderPlot <- function(expr, onError = NULL, trackTime = FALSE, label = NULL
 #' @export
 SafeRenderUI <- function(expr, onError = NULL, trackTime = FALSE, label = NULL, quiet = FALSE,
                           env = parent.frame(), quoted = FALSE, ...) {
+  dotsCall <- match.call(expand.dots = FALSE)
   if (!quoted) {
     expr <- substitute(expr)
   }
-  SafeRender(
-    shiny::renderUI, expr, onError = onError, trackTime = trackTime, label = label,
-    quiet = quiet, env = env, quoted = TRUE, ...
-  )
+  wrapped <- .safeShinyBuildWrappedExpr(expr, onError, trackTime, label, quiet, "SafeRenderUI")
+  .safeShinyCallRenderFuncInEnv(shiny::renderUI, wrapped, env, dotsCall)
 }
 
 #' Safe version of DT::renderDT() with an error-observability hook
@@ -199,16 +254,15 @@ SafeRenderUI <- function(expr, onError = NULL, trackTime = FALSE, label = NULL, 
 #' @export
 SafeRenderTable <- function(expr, onError = NULL, trackTime = FALSE, label = NULL, quiet = FALSE,
                              env = parent.frame(), quoted = FALSE, ...) {
+  dotsCall <- match.call(expand.dots = FALSE)
   if (!quoted) {
     expr <- substitute(expr)
   }
   if (!requireNamespace("DT", quietly = TRUE)) {
     stop("SafeRenderTable() requires the 'DT' package to be installed.")
   }
-  SafeRender(
-    DT::renderDT, expr, onError = onError, trackTime = trackTime, label = label,
-    quiet = quiet, env = env, quoted = TRUE, ...
-  )
+  wrapped <- .safeShinyBuildWrappedExpr(expr, onError, trackTime, label, quiet, "SafeRenderTable")
+  .safeShinyCallRenderFuncInEnv(DT::renderDT, wrapped, env, dotsCall)
 }
 
 #' Safe version of shiny::downloadHandler() with an error-observability hook

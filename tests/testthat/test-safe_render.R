@@ -127,6 +127,55 @@ test_that("SafeRenderTable: shiny::req() silent stop is re-raised, onError not c
   })
 })
 
+test_that("SafeRenderTable: a '...' argument that's a closure over a local reactive keeps access to it (regression, #1)", {
+  skip_if_not_installed("DT")
+
+  # DT::renderDT() resolves its own "..." arguments (e.g. caption=) via parent.frame() inside
+  # its own body, not via the env= it's otherwise given - a naive renderFunc(wrapped, env=env,
+  # quoted=TRUE, ...) forward makes SafeRenderTable()'s own frame (not the caller's) the
+  # apparent direct caller, so a caption closure referencing a reactive silently lost access to
+  # it. Confirmed this doesn't reproduce with plain DT::renderDT() called directly - it's
+  # specific to going through this wrapper. See pmxlab/SafeShiny#1.
+  shiny::testServer(function(input, output, session) {
+    myReactive <- shiny::reactive({ 42 })
+    output$tbl <- SafeRenderTable({
+      data.frame(x = 1)
+    }, caption = htmltools::tags$caption({
+      v <- myReactive()
+      paste("val:", v)
+    }))
+  }, expr = {
+    settle(session)
+    out <- session$getOutput("tbl")
+    expect_match(out, "val: 42", fixed = TRUE)
+  })
+})
+
+test_that("SafeRenderTable: a reactive referenced inside a '...' closure stays genuinely reactive across renders, not frozen at its initial value", {
+  skip_if_not_installed("DT")
+
+  shiny::testServer(function(input, output, session) {
+    counterRV <- shiny::reactiveVal(0)
+    myReactive <- shiny::reactive({ counterRV() })
+    output$tbl <- SafeRenderTable({
+      data.frame(x = counterRV())
+    }, caption = htmltools::tags$caption({
+      v <- myReactive()
+      paste("val:", v)
+    }))
+  }, expr = {
+    settle(session)
+    out1 <- session$getOutput("tbl")
+    expect_match(out1, "val: 0", fixed = TRUE)
+
+    counterRV(99)
+    settle(session)
+    out2 <- session$getOutput("tbl")
+    expect_match(out2, "val: 99", fixed = TRUE)
+    expect_false(grepl("val: 0", out2, fixed = TRUE))
+  })
+})
+
 test_that("SafeRenderTable errors clearly when DT isn't installed", {
   testthat::local_mocked_bindings(requireNamespace = function(...) FALSE, .package = "base")
   expect_error(SafeRenderTable({
