@@ -144,11 +144,107 @@ than the aggregated-by-label view `GetSafeShinyTiming()` returns. Call `ResetSaf
 clear a session's recorded timings (e.g. between two different scenarios you want to compare
 independently).
 
+## SafeRender() / SafeRenderPlot() / SafeRenderUI() / SafeRenderTable() / SafeDownloadHandler()
+
+These are a **different shape of wrapper** from `SafeObserve()`/`SafeObserveEvent()`, and it's
+worth being precise about why. A `reactive()`/render body consumed by an output, and a
+`shiny::downloadHandler()`'s `content` function, both already degrade gracefully on their own -
+confirmed empirically (minimal apps driven through a real session via `chromote`):
+
+- A `reactive()` feeding `renderPlot()`/`renderText()`/etc.: the session stays fully alive, Shiny
+  shows its own local error display for that one output.
+- `shiny::downloadHandler()`: a `content` error produces an HTTP 500 for that one download
+  request; the session stays fully alive afterward (a separate, unrelated observer kept firing
+  normally).
+
+So none of `SafeRender()`/`SafeRenderPlot()`/`SafeRenderUI()`/`SafeRenderTable()`/
+`SafeDownloadHandler()` exist to *prevent a crash* - nothing was going to crash. What they give
+you is a hook into an error Shiny is already silently containing, so the *application* can react
+to it too (log it, show a notification, roll it into some other piece of application state) -
+something native Shiny gives you no way to do. Accordingly, unlike `SafeObserve()`/
+`SafeObserveEvent()` (which *swallow* a genuine error, because nothing else would), these five
+**catch, call `onError()`, then re-raise the original error unchanged** - Shiny's own native
+degradation (the red error box, the HTTP 500) still happens exactly as it does today. The
+`shiny.silent.error` passthrough is identical to `SafeObserve()`/`SafeObserveEvent()`: a
+`req()`/`validate()` silent stop is always re-raised unchanged and never reaches `onError()`.
+
+```{r}
+library(shiny)
+library(SafeShiny)
+
+server <- function(input, output, session) {
+  output$plot <- SafeRenderPlot({
+    plotMyData(input$compound)
+  }, onError = function(e) {
+    # Shiny already shows its own error box for this plot - this hook is extra, e.g. to flag
+    # the failure in some other piece of application state.
+    recordPlotFailure(input$compound, conditionMessage(e))
+  })
+}
+```
+
+`SafeRenderPlot()`/`SafeRenderUI()` are thin wrappers over the generic `SafeRender(renderFunc,
+expr, ...)`, which works with any Shiny-style render-function generator - so a custom or
+third-party one can be wrapped the same way: `SafeRender(my_pkg::renderWidget, { ... })`.
+
+### SafeRenderTable() and DT - read this before relying on it
+
+The MMV apps this package was built for use `DT::renderDT()` (the current name for what used to
+be `DT::renderDataTable()` - same function), not base `shiny::renderTable()`, so that's what
+`SafeRenderTable()` wraps. Checked empirically before assuming it behaves like the base render
+functions above - **it doesn't, quite**. A `DT::renderDT()` body made to throw: the session does
+survive the same way (a second, unrelated observer kept firing normally afterward) - but unlike
+`renderPlot()`/`renderText()`, which show a visible `"An error has occurred"` box, a failed
+`DT::renderDT()` renders as a **silently blank, hidden widget** - no `shiny-output-error` class,
+no message, nothing in the DOM indicating anything went wrong.
+
+So for DT tables specifically, `onError` isn't just an observability nice-to-have layered on top
+of a working native display - it is, practically, **the only way the user or the app finds out
+the table failed at all**. Strongly consider always pairing `SafeRenderTable()` with an `onError`
+that shows a `shiny::showNotification()` or similar, since DT itself won't tell anyone:
+
+```{r}
+output$table <- SafeRenderTable({
+  myData()
+}, onError = function(e) {
+  showNotification("This table failed to load - see the server log.", type = "error")
+})
+```
+
+### SafeDownloadHandler() - a real limitation, not just a caveat
+
+`SafeDownloadHandler()` wraps `shiny::downloadHandler()`'s `content` function as a whole. It
+gives you **one** failure hook for "the whole download failed" - it does **not** give per-item
+resilience inside a loop that builds several pieces of one download. The motivating real-world
+case: a multi-sheet Excel report where one compound's sheet fails to generate shouldn't abort the
+*other* compounds' sheets in the same workbook. `SafeDownloadHandler()` alone does not fix that -
+if one iteration of such a loop throws, the whole `content` call still fails, same as it would
+without this wrapper. Making the other iterations survive needs a `tryCatch` placed at *each loop
+iteration*, inside the report-generation code itself - that's specific to that code's structure
+and is out of scope for a generic wrapper like this one.
+
+```{r}
+output$report <- SafeDownloadHandler(
+  filename = "report.xlsx",
+  content = function(file) {
+    # SafeDownloadHandler() catches a failure in this whole function. It does NOT, by itself,
+    # stop one bad compound's sheet from aborting the rest - that needs its own tryCatch per
+    # iteration, inside writeReportWorkbook() itself.
+    writeReportWorkbook(file)
+  },
+  onError = function(e) message("report generation failed: ", conditionMessage(e))
+)
+```
+
 ## Roadmap
 
-This first release deliberately covers only `SafeObserve()`/`SafeObserveEvent()` - the specific
-gap where Shiny offers no built-in recovery path. A broader `SafeReactive()`/`SafeRenderPlot()`/
-`SafeDownloadHandler()` family has been discussed but is **not** implemented here yet, pending
-further validation of exactly where each one is actually needed (reactives consumed only by
-render outputs are, per the mechanism explained above, usually already safe without any extra
-wrapping - adding one unconditionally would be redundant, not protective).
+Implemented: `SafeObserve()`/`SafeObserveEvent()` (swallowing - the only place nothing else would
+contain the error) and `SafeRender()`/`SafeRenderPlot()`/`SafeRenderUI()`/`SafeRenderTable()`/
+`SafeDownloadHandler()` (observability-only - Shiny already contains these on its own).
+
+Not implemented: a standalone `SafeReactive()` for a plain `reactive()` that's consumed by
+*another reactive* rather than directly by an output or one of the five wrappers above. Per the
+mechanism explained in this vignette, a reactive consumed only by a render output is already safe
+without any wrapping - but a reactive consumed by another reactive, several layers deep, with no
+output or observer at the end of that particular chain, hasn't been separately verified yet.
+Pending further validation of exactly where (if anywhere) that case still needs its own wrapper.

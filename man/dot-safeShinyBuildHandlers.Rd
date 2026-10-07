@@ -2,9 +2,17 @@
 % Please edit documentation in R/safe_observe.R
 \name{.safeShinyBuildHandlers}
 \alias{.safeShinyBuildHandlers}
-\title{Build the shared error/timing handling pieces for SafeObserve()/SafeObserveEvent()}
+\title{Build the shared error/timing handling pieces used by every Safe* function}
 \usage{
-.safeShinyBuildHandlers(label, domain, onError, trackTime, quiet, context)
+.safeShinyBuildHandlers(
+  label,
+  domain,
+  onError,
+  trackTime,
+  quiet,
+  context,
+  reraise = FALSE
+)
 }
 \arguments{
 \item{label}{character string, the label to record timing under and to report in error
@@ -21,6 +29,17 @@ messages.}
 is caught (the error is still caught either way - this only controls the console/log line).}
 
 \item{context}{character string, used in the default logged message (e.g. \code{"SafeObserve"}).}
+
+\item{reraise}{logical, default \code{FALSE}. When \code{FALSE} (used by
+\code{SafeObserve()}/\code{SafeObserveEvent()}), a genuine caught error is swallowed after
+\code{onError()} runs - there is no other consumer to hand it to, so letting it propagate
+would still crash the session. When \code{TRUE} (used by \code{SafeRender()}/
+\code{SafeDownloadHandler()}), a genuine caught error is re-raised unchanged after
+\code{onError()} runs - Shiny already degrades these gracefully on its own (a local error
+display, or an HTTP 500 for that one download), so the wrapper is purely an observability
+hook layered on top, not a change to what the user sees. A \code{shiny.silent.error}
+condition is always re-raised unchanged regardless of \code{reraise}, and never reaches
+\code{onError()} - that case isn't a real error either way.}
 }
 \value{
 a list with elements \code{recordFn} (function(status, startTime)) and
@@ -28,8 +47,10 @@ a list with elements \code{recordFn} (function(status, startTime)) and
 \code{tryCatch} expression via \code{bquote()}.
 }
 \description{
-Not exported. Both public functions delegate here so the tryCatch/timing wiring exists in
-exactly one place.
+Not exported. \code{SafeObserve()}/\code{SafeObserveEvent()} (swallowing: \code{reraise =
+FALSE}, their default) and \code{SafeRender()}/\code{SafeDownloadHandler()} (observability-
+only: \code{reraise = TRUE}) all delegate here so the tryCatch/timing wiring exists in exactly
+one place.
 }
 \details{
 \code{errorHandler()} is deliberately a \emph{single} handler covering both the

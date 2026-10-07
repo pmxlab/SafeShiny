@@ -1,18 +1,24 @@
 Package: SafeShiny
 Type: Package
-Title: Safe Observers for Shiny with Execution-Time Tracking
-Version: 0.1.0
+Title: Safe Observers and Renderers for Shiny with Execution-Time Tracking
+Version: 0.2.0
 Authors@R: c(person("Venelin", "Mitov", email = "vmitov@gmail.com",
                     role = c("aut", "cre", "cph")))
 Maintainer: Venelin Mitov <vmitov@gmail.com>
 Description: An uncaught error inside a plain shiny::observe()/observeEvent() terminates the
-  whole Shiny session, unlike an error inside a reactive() consumed only by a render output,
-  which Shiny already converts into a localized, session-surviving error display. SafeShiny
-  provides SafeObserve() and SafeObserveEvent(), drop-in replacements for shiny::observe() and
-  shiny::observeEvent() that catch errors instead of letting them propagate, while correctly
-  re-raising shiny::req()/shiny::validate()'s intentional silent-stop conditions unchanged.
-  Both also support optional execution-time tracking, to separate time spent in application
-  business logic from time spent in Shiny's own reactive-graph maintenance.
+  whole Shiny session, unlike an error inside a reactive() consumed only by a render output or a
+  shiny::downloadHandler(), either of which Shiny already degrades gracefully on its own (a
+  localized error display, or an HTTP 500 for that one download). SafeShiny provides two kinds of
+  wrapper accordingly. SafeObserve()/SafeObserveEvent() are drop-in replacements for
+  shiny::observe()/observeEvent() that catch and swallow errors instead of letting them crash the
+  session, since nothing else would contain them. SafeRender()/SafeRenderPlot()/SafeRenderUI()/
+  SafeRenderTable()/SafeDownloadHandler() instead catch, fire an onError() hook, and re-raise the
+  original error unchanged, since Shiny's own native degradation already happens either way - the
+  hook exists purely to give the application observability into an error Shiny is already
+  silently containing. All re-raise shiny::req()/shiny::validate()'s intentional silent-stop
+  conditions unchanged and never treat them as errors. Most also support optional execution-time
+  tracking, to separate time spent in application business logic from time spent in Shiny's own
+  reactive-graph maintenance.
 Encoding: UTF-8
 License: MIT + file LICENSE
 Roxygen: list(markdown = TRUE)
@@ -23,7 +29,8 @@ Imports:
 Suggests:
     knitr,
     rmarkdown,
-    testthat (>= 3.0.0)
+    testthat (>= 3.0.0),
+    DT
 Config/testthat/edition: 3
 VignetteBuilder: knitr
 URL: https://github.com/pmxlab/SafeShiny

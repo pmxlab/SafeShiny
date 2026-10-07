@@ -1,7 +1,9 @@
-#' Build the shared error/timing handling pieces for SafeObserve()/SafeObserveEvent()
+#' Build the shared error/timing handling pieces used by every Safe* function
 #'
-#' Not exported. Both public functions delegate here so the tryCatch/timing wiring exists in
-#' exactly one place.
+#' Not exported. \code{SafeObserve()}/\code{SafeObserveEvent()} (swallowing: \code{reraise =
+#' FALSE}, their default) and \code{SafeRender()}/\code{SafeDownloadHandler()} (observability-
+#' only: \code{reraise = TRUE}) all delegate here so the tryCatch/timing wiring exists in exactly
+#' one place.
 #'
 #' @param label character string, the label to record timing under and to report in error
 #'   messages.
@@ -12,6 +14,16 @@
 #' @param quiet logical, whether to suppress the default \code{message()} logged when an error
 #'   is caught (the error is still caught either way - this only controls the console/log line).
 #' @param context character string, used in the default logged message (e.g. \code{"SafeObserve"}).
+#' @param reraise logical, default \code{FALSE}. When \code{FALSE} (used by
+#'   \code{SafeObserve()}/\code{SafeObserveEvent()}), a genuine caught error is swallowed after
+#'   \code{onError()} runs - there is no other consumer to hand it to, so letting it propagate
+#'   would still crash the session. When \code{TRUE} (used by \code{SafeRender()}/
+#'   \code{SafeDownloadHandler()}), a genuine caught error is re-raised unchanged after
+#'   \code{onError()} runs - Shiny already degrades these gracefully on its own (a local error
+#'   display, or an HTTP 500 for that one download), so the wrapper is purely an observability
+#'   hook layered on top, not a change to what the user sees. A \code{shiny.silent.error}
+#'   condition is always re-raised unchanged regardless of \code{reraise}, and never reaches
+#'   \code{onError()} - that case isn't a real error either way.
 #'
 #' @return a list with elements \code{recordFn} (function(status, startTime)) and
 #'   \code{errorHandler} (function(e, startTime)), both to be spliced into the generated
@@ -30,7 +42,7 @@
 #' from there avoids that self-recapture entirely, since there is no sibling handler left at that
 #' same level to catch it.
 #' @keywords internal
-.safeShinyBuildHandlers <- function(label, domain, onError, trackTime, quiet, context) {
+.safeShinyBuildHandlers <- function(label, domain, onError, trackTime, quiet, context, reraise = FALSE) {
   recordFn <- function(status, startTime) {
     if (!isTRUE(trackTime)) {
       return(invisible(NULL))
@@ -51,6 +63,9 @@
     }
     if (is.function(onError)) {
       onError(e)
+    }
+    if (isTRUE(reraise)) {
+      stop(e)
     }
     invisible(NULL)
   }
