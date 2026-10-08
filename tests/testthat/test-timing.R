@@ -184,3 +184,27 @@ test_that("SummarizeSafeShinyTiming does not double-count nested calls", {
   summ <- SummarizeSafeShinyTiming(session = fake)
   expect_equal(summ$total_tracked_time, raw$elapsed[raw$label == "a"])
 })
+
+test_that("trackTime defaults to getOption('SafeShiny.trackTime', FALSE); explicit value wins", {
+  run <- function(...) {
+    out <- NULL
+    shiny::testServer(function(input, output, session) {
+      ResetSafeShinyTiming(session = session)
+      SafeObserve({ 1 + 1 }, label = "default", ...)
+      SafeReactive({ 1 + 1 }, label = "react_default", ...)
+    }, expr = {
+      settle(session)
+      out <<- GetSafeShinyTiming(session = session)$label
+    })
+    out
+  }
+
+  withr_old <- options(SafeShiny.trackTime = NULL)
+  on.exit(options(withr_old), add = TRUE)
+
+  expect_length(run(), 0)                       # option unset: not tracked
+
+  options(SafeShiny.trackTime = TRUE)
+  expect_equal(run(), "default")                # option set: observer tracked (reactive never read)
+  expect_length(run(trackTime = FALSE), 0)      # explicit FALSE wins over the option
+})

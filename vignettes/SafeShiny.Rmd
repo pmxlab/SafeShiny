@@ -99,6 +99,11 @@ Passing `trackTime = TRUE` to `SafeObserve()`/`SafeObserveEvent()` times the wra
 - all three consume real wall-clock time) and records it, keyed to the current Shiny session so
 concurrent users' timings never mix.
 
+`trackTime` defaults to `getOption("SafeShiny.trackTime", FALSE)`, so setting
+`options(SafeShiny.trackTime = TRUE)` once (before the wrappers are created) turns tracking on for
+every `Safe*` call that doesn't pass `trackTime` itself - including ones created by other
+packages such as generated observers and reactives. An explicit `trackTime = FALSE` still wins.
+
 ```{r}
 server <- function(input, output, session) {
   SafeObserveEvent(input$upload, {
