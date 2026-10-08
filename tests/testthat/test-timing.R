@@ -170,3 +170,17 @@ test_that("PlotSafeShinyFlame draws and returns data, and is quiet when empty", 
   expect_equal(nrow(out), 2)
   expect_true(all(c("t0", "t1") %in% names(out)))
 })
+
+test_that("SummarizeSafeShinyTiming does not double-count nested calls", {
+  fake <- list(token = paste0("sumnest-", as.numeric(Sys.time())))
+  ResetSafeShinyTiming(session = fake)
+  a <- SafeShiny:::.startSafeShinyTiming(fake, "a")
+  b <- SafeShiny:::.startSafeShinyTiming(fake, "b")
+  Sys.sleep(0.02)
+  SafeShiny:::.endSafeShinyTiming(fake, b, "ok")
+  SafeShiny:::.endSafeShinyTiming(fake, a, "ok")
+
+  raw <- GetSafeShinyTimingRaw(session = fake)
+  summ <- SummarizeSafeShinyTiming(session = fake)
+  expect_equal(summ$total_tracked_time, raw$elapsed[raw$label == "a"])
+})

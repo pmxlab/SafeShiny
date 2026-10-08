@@ -203,11 +203,15 @@ GetSafeShinyTimingRaw <- function(session = shiny::getDefaultReactiveDomain()) {
 #' Summarize tracked execution time vs. wall-clock elapsed time for a Shiny session
 #'
 #' Splits the wall-clock time elapsed since the first tracked call in this session into time
-#' actually spent executing tracked user code (the sum of every \code{\link{SafeObserve}}/
+#' actually spent executing tracked user code (the sum of every top-level \code{\link{SafeObserve}}/
 #' \code{\link{SafeObserveEvent}} call made with \code{trackTime = TRUE}) and the remainder,
 #' labelled \code{untracked_time} - an approximation of time spent in Shiny's own reactive-graph
 #' maintenance (invalidation, scheduling, flushing) plus anything not wrapped with
 #' \code{trackTime = TRUE}.
+#'
+#' Nested tracked calls (e.g. a \code{SafeReactive} read inside a \code{SafeObserve}) are
+#' counted only once, through their top-level ancestor, so the total is not inflated by
+#' nesting. Per-label times in \code{timing} remain inclusive of nested children.
 #'
 #' @inheritParams GetSafeShinyTiming
 #' @return an object of class \code{"SafeShinyTimingSummary"} (a list with elements
@@ -228,7 +232,8 @@ SummarizeSafeShinyTiming <- function(session = shiny::getDefaultReactiveDomain()
   store <- .safeShinyEnv$stores[[key]]
   timing <- GetSafeShinyTiming(session = session)
 
-  total_tracked <- sum(timing$total_time)
+  raw <- GetSafeShinyTimingRaw(session = session)
+  total_tracked <- sum(raw$elapsed[raw$depth == 0])
   wall_clock <- if (!is.null(store) && !is.null(store$firstTime)) {
     as.numeric(difftime(Sys.time(), store$firstTime, units = "secs"))
   } else {
