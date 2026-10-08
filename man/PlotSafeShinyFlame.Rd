@@ -36,7 +36,8 @@ directly above its parent. Calls that ended in an error or a \code{shiny::req()}
 Nesting is inferred from a per-session stack of currently-running tracked calls, so it is
 only reliable for synchronous code: with \code{promises}/\code{future} the intervals of
 different calls interleave. Time not spent in any tracked call (Shiny's own overhead and
-anything not wrapped) is simply empty space.
+anything not wrapped) is simply empty space, and is summarised in a label in the bottom-right
+corner (the chart's time span minus the time covered by top-level tracked calls).
 }
 \examples{
 ResetSafeShinyTiming(session = NULL)

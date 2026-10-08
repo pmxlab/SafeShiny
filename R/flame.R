@@ -10,7 +10,8 @@
 #' Nesting is inferred from a per-session stack of currently-running tracked calls, so it is
 #' only reliable for synchronous code: with \code{promises}/\code{future} the intervals of
 #' different calls interleave. Time not spent in any tracked call (Shiny's own overhead and
-#' anything not wrapped) is simply empty space.
+#' anything not wrapped) is simply empty space, and is summarised in a label in the bottom-right
+#' corner (the chart's time span minus the time covered by top-level tracked calls).
 #'
 #' @param session a Shiny session, or \code{NULL} for the global store used outside a running
 #'   app. Defaults to the current reactive domain.
@@ -56,6 +57,11 @@ PlotSafeShinyFlame <- function(session = shiny::getDefaultReactiveDomain(), minT
   lab <- raw$elapsed >= minTime
   text((raw$t0 + raw$t1)[lab] / 2, raw$depth[lab] + 0.5,
        sprintf("%s (%.3gs)", raw$label[lab], raw$elapsed[lab]), cex = 0.7, col = "white")
+  top <- raw[raw$depth == 0, ]
+  untracked <- max(xmax - sum(top$elapsed), 0)
+  legend("bottomright", bty = "n", cex = 0.8, text.col = "grey30",
+         legend = sprintf("Untracked: %.3gs (%.0f%% of %.3gs)", untracked,
+                          100 * untracked / xmax, xmax))
   legend("topright", legend = names(cols), fill = cols, bty = "n", cex = 0.8)
   invisible(raw)
 }
