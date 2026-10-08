@@ -232,3 +232,21 @@ test_that("type is derived from the wrapper context and recorded in raw and aggr
     expect_equal(agg$type[agg$label == "r"], "react")
   })
 })
+
+test_that("PlotSafeShinyFlameHTML builds a self-contained widget with the call data", {
+  fake <- list(token = paste0("html-", as.numeric(Sys.time())))
+  ResetSafeShinyTiming(session = fake)
+  expect_message(expect_null(PlotSafeShinyFlameHTML(session = fake)), "No tracked calls")
+
+  a <- SafeShiny:::.startSafeShinyTiming(fake, "outer </script> call", "observe")
+  b <- SafeShiny:::.startSafeShinyTiming(fake, "inner", "react")
+  SafeShiny:::.endSafeShinyTiming(fake, b, "error")
+  SafeShiny:::.endSafeShinyTiming(fake, a, "ok")
+
+  w <- PlotSafeShinyFlameHTML(session = fake)
+  html <- as.character(w)
+  expect_true(grepl("inner", html, fixed = TRUE))
+  expect_true(grepl('"y":"react"', html, fixed = TRUE))
+  # the data can never close the <script> element early
+  expect_equal(lengths(regmatches(html, gregexpr("</script>", html, fixed = TRUE))), 1)
+})
