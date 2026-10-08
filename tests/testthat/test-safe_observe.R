@@ -158,3 +158,57 @@ test_that("quiet = TRUE suppresses the default error message; quiet = FALSE (def
     })
   )
 })
+
+test_that("SafeObserveEvent also contains an error in the event expression (a throwing reactive)", {
+  shiny::testServer(function(input, output, session) {
+    caught <- NULL
+    handler_runs <- 0
+    boom <- shiny::reactive({
+      if (isTRUE(input$explode)) stop("event reactive failed")
+      input$go
+    })
+    SafeObserveEvent(boom(), {
+      handler_runs <<- handler_runs + 1
+    }, onError = function(e) caught <<- conditionMessage(e), quiet = TRUE, ignoreInit = TRUE)
+
+    other <- 0
+    SafeObserveEvent(input$other, {
+      other <<- other + 1
+    }, ignoreInit = TRUE)
+    session$getCaught <- function() caught
+    session$getHandlerRuns <- function() handler_runs
+    session$getOther <- function() other
+  }, expr = {
+    settle(session)
+    trigger(session, go = 1)
+    expect_equal(session$getHandlerRuns(), 1)  # normal operation unchanged
+
+    # no error escapes (an unhandled observer error would fail the test via testServer)
+    trigger(session, explode = TRUE, go = 2)
+    expect_equal(session$getCaught(), "event reactive failed")
+    expect_equal(session$getHandlerRuns(), 1)  # handler not run
+    expect_equal(nrow(GetSafeShinyErrors(session)), 1)
+
+    trigger(session, other = 1)  # session still alive
+    expect_equal(session$getOther(), 1)
+  })
+})
+
+test_that("SafeObserveEvent: req() in the event expression is still a silent stop, not an error", {
+  shiny::testServer(function(input, output, session) {
+    onErrorCalled <- FALSE
+    runs <- 0
+    SafeObserveEvent({ shiny::req(input$go > 1); input$go }, {
+      runs <<- runs + 1
+    }, onError = function(e) onErrorCalled <<- TRUE, quiet = TRUE)
+    session$getOnErrorCalled <- function() onErrorCalled
+    session$getRuns <- function() runs
+  }, expr = {
+    settle(session)
+    trigger(session, go = 1)
+    expect_false(session$getOnErrorCalled())
+    expect_equal(session$getRuns(), 0)
+    trigger(session, go = 2)
+    expect_equal(session$getRuns(), 1)
+  })
+})

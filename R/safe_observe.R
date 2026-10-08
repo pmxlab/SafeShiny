@@ -178,10 +178,13 @@ SafeObserve <- function(x, onError = NULL, trackTime = NA, label = NULL, quiet =
 #' Safe version of shiny::observeEvent() that catches errors instead of crashing the session
 #'
 #' @description
-#' Same as \code{\link{SafeObserve}}, but for \code{shiny::observeEvent()}. Only
-#' \code{handlerExpr} (the code that runs when the event fires) is wrapped in \code{tryCatch} -
-#' \code{eventExpr} (the trigger being watched) is left untouched, since it's typically just a
-#' value read and changing its error semantics could alter trigger-detection behavior.
+#' Same as \code{\link{SafeObserve}}, but for \code{shiny::observeEvent()}. Both
+#' \code{handlerExpr} (the code that runs when the event fires) and \code{eventExpr} (the trigger
+#' being watched) are protected. An error raised while evaluating \code{eventExpr} - typically a
+#' \code{reactive()} that throws - would otherwise be an unhandled observer error that makes Shiny
+#' close the whole session; here it is reported like a handler error (message, error log,
+#' \code{onError}) and the observer then stops quietly, without running \code{handlerExpr}. The
+#' value of \code{eventExpr} is passed through unchanged, so trigger detection is not affected.
 #'
 #' @inheritParams SafeObserve
 #' @param eventExpr the expression to watch for changes, exactly as for
@@ -245,8 +248,23 @@ SafeObserveEvent <- function(eventExpr, handlerExpr, onError = NULL, trackTime =
     )
   })
 
+  # The event expression needs the same protection: an error raised while observeEvent() evaluates
+  # it (typically a reactive that throws) is otherwise an unhandled observer error, which makes
+  # Shiny close the whole session. A genuine error is reported exactly like a handler error; the
+  # observer then stops quietly (req(FALSE)) without running the handler. req()/validate() silent
+  # stops raised by the event expression are re-raised unchanged by errorHandler().
+  wrappedEventExpr <- bquote(
+    tryCatch(
+      .(eventExpr),
+      error = function(.safeShiny_e) {
+        .(handlers$errorHandler)(.safeShiny_e, NULL)
+        shiny::req(FALSE)
+      }
+    )
+  )
+
   shiny::observeEvent(
-    eventExpr, wrappedHandlerExpr,
+    wrappedEventExpr, wrappedHandlerExpr,
     event.env = event.env, event.quoted = TRUE,
     handler.env = handler.env, handler.quoted = TRUE, ...,
     label = label, suspended = suspended, priority = priority,
