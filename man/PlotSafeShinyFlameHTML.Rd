@@ -8,7 +8,7 @@ PlotSafeShinyFlameHTML(
   session = shiny::getDefaultReactiveDomain(),
   height = 22,
   trim = TRUE,
-  trimMinTime = 0.01
+  trimMinTime = 0
 )
 }
 \arguments{
@@ -23,8 +23,8 @@ call to the end of the last one (calls outside that window are not drawn). \code
 time before and after the activity is shown (and counted as untracked). Without a recorded
 window (tracking not started with these functions) it is the same as \code{TRUE}.}
 
-\item{trimMinTime}{numeric, seconds, default \code{0.01}. With \code{trim = TRUE}, calls shorter
-than this do not set the edges of the window (see \code{\link{SummarizeSafeShinyTiming}}).}
+\item{trimMinTime}{numeric, seconds, default \code{0} (every call counts). With \code{trim = TRUE}, calls shorter
+than this do not set the edges of the window (see \code{\link{SummarizeSafeShinyTiming}}); e.g. \code{0.01} ignores tiny tab-switch observers.}
 }
 \value{
 an \code{htmltools} browsable tag, or \code{NULL} (invisibly, with a message) if nothing

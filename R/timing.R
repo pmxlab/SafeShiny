@@ -248,8 +248,8 @@ GetSafeShinyTimingRaw <- function(session = shiny::getDefaultReactiveDomain()) {
 #'   \code{\link{StartSafeShinyTracking}} to \code{\link{StopSafeShinyTracking}} (or to now while
 #'   tracking is still on); if tracking was not switched on with these functions (e.g. via the
 #'   \code{SafeShiny.trackTime} option), from the first tracked call to now.
-#' @param trimMinTime numeric, seconds, default \code{0.01}. With \code{trim = TRUE}, calls shorter
-#'   than this do not set the edges of the window: tiny calls such as a tab-shown observer fire
+#' @param trimMinTime numeric, seconds, default \code{0} (every call counts). With \code{trim = TRUE}, calls shorter
+#'   than this do not set the edges of the window - e.g. \code{0.01} to ignore tiny calls: tiny calls such as a tab-shown observer fire
 #'   on the user's own navigation (e.g. back to the monitoring tab to press Stop) and would
 #'   otherwise defeat the trimming. If no call is long enough, all calls are used.
 #' @return an object of class \code{"SafeShinyTimingSummary"} (a list with elements
@@ -266,7 +266,7 @@ GetSafeShinyTimingRaw <- function(session = shiny::getDefaultReactiveDomain()) {
 #'
 #' @export
 SummarizeSafeShinyTiming <- function(session = shiny::getDefaultReactiveDomain(), trim = FALSE,
-                                     trimMinTime = 0.01) {
+                                     trimMinTime = 0) {
   key <- .safeShinySessionKey(session)
   store <- .safeShinyEnv$stores[[key]]
   timing <- GetSafeShinyTiming(session = session)
@@ -307,7 +307,7 @@ SummarizeSafeShinyTiming <- function(session = shiny::getDefaultReactiveDomain()
 #' @return a list with \code{origin} and \code{end} (\code{POSIXct}) and \code{keep}, a logical
 #'   vector marking the calls that lie inside the window.
 #' @keywords internal
-.safeShinyTrimWindow <- function(raw, minTime = 0.01) {
+.safeShinyTrimWindow <- function(raw, minTime = 0) {
   ends <- raw$start + raw$elapsed
   sig <- raw$elapsed >= minTime
   if (!any(sig)) sig <- rep(TRUE, nrow(raw))

@@ -7,7 +7,7 @@
 SummarizeSafeShinyTiming(
   session = shiny::getDefaultReactiveDomain(),
   trim = FALSE,
-  trimMinTime = 0.01
+  trimMinTime = 0
 )
 }
 \arguments{
@@ -23,8 +23,8 @@ before and after the activity is ignored (calls outside that window are left out
 tracking is still on); if tracking was not switched on with these functions (e.g. via the
 \code{SafeShiny.trackTime} option), from the first tracked call to now.}
 
-\item{trimMinTime}{numeric, seconds, default \code{0.01}. With \code{trim = TRUE}, calls shorter
-than this do not set the edges of the window: tiny calls such as a tab-shown observer fire
+\item{trimMinTime}{numeric, seconds, default \code{0} (every call counts). With \code{trim = TRUE}, calls shorter
+than this do not set the edges of the window - e.g. \code{0.01} to ignore tiny calls: tiny calls such as a tab-shown observer fire
 on the user's own navigation (e.g. back to the monitoring tab to press Stop) and would
 otherwise defeat the trimming. If no call is long enough, all calls are used.}
 }
