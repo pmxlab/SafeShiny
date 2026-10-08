@@ -4,7 +4,7 @@ test_that("GetSafeShinyTiming/SummarizeSafeShinyTiming return empty results when
 
   timing <- GetSafeShinyTiming(session = fake)
   expect_equal(nrow(timing), 0)
-  expect_named(timing, c("label", "n", "total_time", "mean_time", "last_time"))
+  expect_named(timing, c("label", "type", "n", "total_time", "mean_time", "last_time"))
 
   summ <- SummarizeSafeShinyTiming(session = fake)
   expect_s3_class(summ, "SafeShinyTimingSummary")
@@ -207,4 +207,28 @@ test_that("trackTime defaults to getOption('SafeShiny.trackTime', FALSE); explic
   options(SafeShiny.trackTime = TRUE)
   expect_equal(run(), "default")                # option set: observer tracked (reactive never read)
   expect_length(run(trackTime = FALSE), 0)      # explicit FALSE wins over the option
+})
+
+test_that("type is derived from the wrapper context and recorded in raw and aggregated timing", {
+  f <- SafeShiny:::.safeShinyTypeFromContext
+  expect_equal(f("SafeObserve"), "observe")
+  expect_equal(f("SafeObserveEvent"), "observe")
+  expect_equal(f("SafeReactive"), "react")
+  for (ctx in c("SafeRender", "SafeRenderPlot", "SafeRenderUI", "SafeRenderTable")) {
+    expect_equal(f(ctx), "render")
+  }
+  expect_equal(f("SafeDownloadHandler"), "download")
+
+  shiny::testServer(function(input, output, session) {
+    ResetSafeShinyTiming(session = session)
+    r <- SafeReactive({ 1 }, trackTime = TRUE, label = "r")
+    SafeObserve({ r() }, trackTime = TRUE, label = "o")
+  }, {
+    settle(session)
+    raw <- GetSafeShinyTimingRaw(session = session)
+    expect_equal(raw$type[raw$label == "r"], "react")
+    expect_equal(raw$type[raw$label == "o"], "observe")
+    agg <- GetSafeShinyTiming(session = session)
+    expect_equal(agg$type[agg$label == "r"], "react")
+  })
 })

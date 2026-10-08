@@ -153,7 +153,9 @@ independently).
 depth on the y-axis): a tracked call evaluated synchronously inside another one - for instance a
 `SafeReactive()` read from a `SafeObserve()` - is drawn directly above its parent. Nesting is
 inferred from a per-session stack of running tracked calls, so it is only reliable for
-synchronous code (`promises`/`future` intervals interleave).
+synchronous code (`promises`/`future` intervals interleave). Each record also carries a `type`
+(`observe`, `react`, `render` or `download`), set automatically by the wrapper; the flame chart
+fills bars by type and outlines errors/silent stops in red/amber.
 
 ## SafeRender() / SafeRenderPlot() / SafeRenderUI() / SafeRenderTable() / SafeDownloadHandler()
 

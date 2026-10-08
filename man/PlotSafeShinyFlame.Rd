@@ -29,8 +29,9 @@ Draws a profvis-style flame chart of every tracked call
 (\code{trackTime = TRUE}) recorded so far in a session: time runs along the x-axis and
 nesting depth up the y-axis, so a tracked call evaluated synchronously inside another one
 (e.g. a \code{\link{SafeReactive}} read from a \code{\link{SafeObserve}}) is drawn as a bar
-directly above its parent. Calls that ended in an error or a \code{shiny::req()}/
-\code{validate()} silent stop are coloured differently.
+directly above its parent. Bars are filled by the kind of call (observer, reactive, render,
+download), and calls that ended in an error or a \code{shiny::req()}/\code{validate()} silent
+stop get a red or amber outline.
 }
 \details{
 Nesting is inferred from a per-session stack of currently-running tracked calls, so it is
@@ -41,8 +42,8 @@ corner (the chart's time span minus the time covered by top-level tracked calls)
 }
 \examples{
 ResetSafeShinyTiming(session = NULL)
-outer <- SafeShiny:::.startSafeShinyTiming(NULL, "observer")
-inner <- SafeShiny:::.startSafeShinyTiming(NULL, "reactive")
+outer <- SafeShiny:::.startSafeShinyTiming(NULL, "observer", "observe")
+inner <- SafeShiny:::.startSafeShinyTiming(NULL, "reactive", "react")
 Sys.sleep(0.01)
 SafeShiny:::.endSafeShinyTiming(NULL, inner, "ok")
 SafeShiny:::.endSafeShinyTiming(NULL, outer, "ok")

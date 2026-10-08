@@ -12,8 +12,9 @@ GetSafeShinyTiming(session = shiny::getDefaultReactiveDomain())
 a running session) to read the fallback \code{"global"} store used when no session exists.}
 }
 \value{
-a data.frame with columns \code{label}, \code{n}, \code{total_time}, \code{mean_time},
-\code{last_time}, sorted by \code{total_time} descending. Zero rows if nothing has been
+a data.frame with columns \code{label}, \code{type} (\code{"observe"}, \code{"react"},
+\code{"render"} or \code{"download"}; the first type seen for that label), \code{n},
+\code{total_time}, \code{mean_time}, \code{last_time}, sorted by \code{total_time} descending. Zero rows if nothing has been
 tracked yet.
 }
 \description{
