@@ -6,7 +6,8 @@
 \usage{
 SummarizeSafeShinyTiming(
   session = shiny::getDefaultReactiveDomain(),
-  trim = FALSE
+  trim = FALSE,
+  trimMinTime = 0.01
 )
 }
 \arguments{
@@ -16,10 +17,16 @@ a running session) to read the fallback \code{"global"} store used when no sessi
 
 \item{trim}{logical, default \code{FALSE}. Which time window is the "wall clock"?
 \code{TRUE}: from the start of the first tracked call to the end of the last one, so idle time
-before and after the activity is ignored. \code{FALSE}: the whole tracking window, i.e. from
+before and after the activity is ignored (calls outside that window are left out of
+\code{total_tracked_time}; the \code{timing} table always covers all calls). \code{FALSE}: the whole tracking window, i.e. from
 \code{\link{StartSafeShinyTracking}} to \code{\link{StopSafeShinyTracking}} (or to now while
 tracking is still on); if tracking was not switched on with these functions (e.g. via the
 \code{SafeShiny.trackTime} option), from the first tracked call to now.}
+
+\item{trimMinTime}{numeric, seconds, default \code{0.01}. With \code{trim = TRUE}, calls shorter
+than this do not set the edges of the window: tiny calls such as a tab-shown observer fire
+on the user's own navigation (e.g. back to the monitoring tab to press Stop) and would
+otherwise defeat the trimming. If no call is long enough, all calls are used.}
 }
 \value{
 an object of class \code{"SafeShinyTimingSummary"} (a list with elements

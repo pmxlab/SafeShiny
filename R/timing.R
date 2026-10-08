@@ -243,10 +243,15 @@ GetSafeShinyTimingRaw <- function(session = shiny::getDefaultReactiveDomain()) {
 #' @inheritParams GetSafeShinyTiming
 #' @param trim logical, default \code{FALSE}. Which time window is the "wall clock"?
 #'   \code{TRUE}: from the start of the first tracked call to the end of the last one, so idle time
-#'   before and after the activity is ignored. \code{FALSE}: the whole tracking window, i.e. from
+#'   before and after the activity is ignored (calls outside that window are left out of
+#'   \code{total_tracked_time}; the \code{timing} table always covers all calls). \code{FALSE}: the whole tracking window, i.e. from
 #'   \code{\link{StartSafeShinyTracking}} to \code{\link{StopSafeShinyTracking}} (or to now while
 #'   tracking is still on); if tracking was not switched on with these functions (e.g. via the
 #'   \code{SafeShiny.trackTime} option), from the first tracked call to now.
+#' @param trimMinTime numeric, seconds, default \code{0.01}. With \code{trim = TRUE}, calls shorter
+#'   than this do not set the edges of the window: tiny calls such as a tab-shown observer fire
+#'   on the user's own navigation (e.g. back to the monitoring tab to press Stop) and would
+#'   otherwise defeat the trimming. If no call is long enough, all calls are used.
 #' @return an object of class \code{"SafeShinyTimingSummary"} (a list with elements
 #'   \code{total_tracked_time}, \code{wall_clock_elapsed}, \code{untracked_time}, \code{n_labels}
 #'   and \code{timing}, the same data.frame \code{\link{GetSafeShinyTiming}} returns) with a
@@ -260,15 +265,18 @@ GetSafeShinyTimingRaw <- function(session = shiny::getDefaultReactiveDomain()) {
 #' print(SummarizeSafeShinyTiming(session = NULL))
 #'
 #' @export
-SummarizeSafeShinyTiming <- function(session = shiny::getDefaultReactiveDomain(), trim = FALSE) {
+SummarizeSafeShinyTiming <- function(session = shiny::getDefaultReactiveDomain(), trim = FALSE,
+                                     trimMinTime = 0.01) {
   key <- .safeShinySessionKey(session)
   store <- .safeShinyEnv$stores[[key]]
   timing <- GetSafeShinyTiming(session = session)
 
   raw <- GetSafeShinyTimingRaw(session = session)
+  tw <- if (nrow(raw) > 0 && isTRUE(trim)) .safeShinyTrimWindow(raw, trimMinTime) else NULL
+  if (!is.null(tw)) raw <- raw[tw$keep, , drop = FALSE]
   total_tracked <- sum(raw$elapsed[raw$depth == 0])
-  wall_clock <- if (nrow(raw) > 0 && isTRUE(trim)) {
-    as.numeric(difftime(max(raw$start + raw$elapsed), min(raw$start), units = "secs"))
+  wall_clock <- if (!is.null(tw)) {
+    as.numeric(difftime(tw$end, tw$origin, units = "secs"))
   } else if (!is.null(store) && !is.null(store$firstTime)) {
     win <- .safeShinyEnv$windows[[key]]
     from <- if (!is.null(win)) win$start else store$firstTime
@@ -289,6 +297,23 @@ SummarizeSafeShinyTiming <- function(session = shiny::getDefaultReactiveDomain()
     ),
     class = "SafeShinyTimingSummary"
   )
+}
+
+#' The time window of a trimmed summary/flame chart
+#'
+#' @param raw data.frame as returned by \code{GetSafeShinyTimingRaw()}, at least one row.
+#' @param minTime numeric, seconds: calls shorter than this do not set the window edges (all calls
+#'   are used if none is long enough).
+#' @return a list with \code{origin} and \code{end} (\code{POSIXct}) and \code{keep}, a logical
+#'   vector marking the calls that lie inside the window.
+#' @keywords internal
+.safeShinyTrimWindow <- function(raw, minTime = 0.01) {
+  ends <- raw$start + raw$elapsed
+  sig <- raw$elapsed >= minTime
+  if (!any(sig)) sig <- rep(TRUE, nrow(raw))
+  origin <- min(raw$start[sig])
+  end <- max(ends[sig])
+  list(origin = origin, end = end, keep = raw$start >= origin & ends <= end)
 }
 
 #' Print a SafeShiny timing summary

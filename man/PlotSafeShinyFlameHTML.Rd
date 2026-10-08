@@ -7,7 +7,8 @@
 PlotSafeShinyFlameHTML(
   session = shiny::getDefaultReactiveDomain(),
   height = 22,
-  trim = TRUE
+  trim = TRUE,
+  trimMinTime = 0.01
 )
 }
 \arguments{
@@ -17,10 +18,13 @@ app. Defaults to the current reactive domain.}
 \item{height}{numeric, height of one depth row in pixels (default \code{22}).}
 
 \item{trim}{logical, default \code{TRUE}: the time axis runs from the start of the first tracked
-call to the end of the last one. \code{FALSE}: it covers the whole tracking window, from
+call to the end of the last one (calls outside that window are not drawn). \code{FALSE}: it covers the whole tracking window, from
 \code{\link{StartSafeShinyTracking}} to \code{\link{StopSafeShinyTracking}} (or to now), so idle
 time before and after the activity is shown (and counted as untracked). Without a recorded
 window (tracking not started with these functions) it is the same as \code{TRUE}.}
+
+\item{trimMinTime}{numeric, seconds, default \code{0.01}. With \code{trim = TRUE}, calls shorter
+than this do not set the edges of the window (see \code{\link{SummarizeSafeShinyTiming}}).}
 }
 \value{
 an \code{htmltools} browsable tag, or \code{NULL} (invisibly, with a message) if nothing
