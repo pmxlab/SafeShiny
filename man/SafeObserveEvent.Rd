@@ -63,10 +63,19 @@ unchanged - see \code{\link[shiny]{observeEvent}}.}
 the \code{shiny::Observer} object, exactly as for \code{shiny::observeEvent()}.
 }
 \description{
-Same as \code{\link{SafeObserve}}, but for \code{shiny::observeEvent()}. Only
-\code{handlerExpr} (the code that runs when the event fires) is wrapped in \code{tryCatch} -
-\code{eventExpr} (the trigger being watched) is left untouched, since it's typically just a
-value read and changing its error semantics could alter trigger-detection behavior.
+Same as \code{\link{SafeObserve}}, but for \code{shiny::observeEvent()}. Both
+\code{handlerExpr} (the code that runs when the event fires) and \code{eventExpr} (the trigger
+being watched) are protected. An error raised while evaluating \code{eventExpr} - typically a
+\code{reactive()} that throws - would otherwise be an unhandled observer error that makes Shiny
+close the whole session; here it is reported like a handler error (message, error log,
+\code{onError}) and the observer then stops quietly, without running \code{handlerExpr}. The
+value of \code{eventExpr} is passed through unchanged, so trigger detection is not affected.
+
+When time is tracked, the handler is recorded under \code{label}; the evaluation of
+\code{eventExpr} is recorded as a separate call \code{"<label> (event)"}, so that tracked
+reactives evaluated as part of the event appear nested under it. It is recorded only when it ran
+another tracked call, took at least 1 ms, or ended in an error or a \code{req()} silent stop -
+plain \code{input$x} events leave no entry.
 }
 \examples{
 \dontrun{
