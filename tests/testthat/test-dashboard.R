@@ -147,3 +147,13 @@ test_that("console capture records output, clears per session and restores the s
   expect_equal(sink.number(), n0)
   expect_length(SafeShiny:::.safeShinyConsoleGet(s), 0)
 })
+
+test_that("tab height: percentages are viewport shares, numbers are pixels, junk errors", {
+  f <- SafeShiny:::.safeShinyCssHeight
+  expect_equal(f("60%"), "60vh")
+  expect_equal(f("500px"), "500px")
+  expect_equal(f(400), "400px")
+  expect_error(f(NULL))
+  expect_match(as.character(SafeShinyTabUI("x", height = "45%")), "max-height: 45vh", fixed = TRUE)
+  expect_match(as.character(SafeShinyTabPanel("x", height = 300)), "max-height: 300px", fixed = TRUE)
+})

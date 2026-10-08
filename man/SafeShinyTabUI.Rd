@@ -5,12 +5,18 @@
 \alias{SafeShinyTabPanel}
 \title{SafeShiny monitoring tab (UI)}
 \usage{
-SafeShinyTabUI(id)
+SafeShinyTabUI(id, height = "60\%")
 
-SafeShinyTabPanel(id, title = "SafeShiny", ...)
+SafeShinyTabPanel(id, title = "SafeShiny", height = "60\%", ...)
 }
 \arguments{
 \item{id}{character string, the module id.}
+
+\item{height}{character string or number, maximum height of the area below the Start/Stop
+button; its content scrolls inside it. A percentage such as \code{"60\%"} is read as a share of
+the \emph{viewport} height (a percentage of an auto-height parent would not work); any other CSS
+length (\code{"500px"}, \code{"60vh"}) is used as is, and a plain number means pixels. Lower it
+if a fixed footer of the app covers the bottom of the tab. Default \code{"60\%"}.}
 
 \item{title}{character string, title of the tab (default \code{"SafeShiny"}).}
 
