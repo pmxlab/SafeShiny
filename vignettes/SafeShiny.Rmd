@@ -143,6 +143,31 @@ once *every* relevant observer/reactive in the session's critical path is wrappe
 `reactive()`, its time ends up lumped into `untracked_time` too, and you'll overestimate how much
 of the gap is really Shiny's own bookkeeping rather than just unmeasured application code.
 
+### Runtime start/stop, error log and the monitoring tab
+
+`trackTime` defaults to "auto": a call is timed while `options(SafeShiny.trackTime = TRUE)` is set
+or while tracking is switched on for the *session* with `StartSafeShinyTracking(session)` (and off
+with `StopSafeShinyTracking(session)`) - decided each time the call runs, so it also covers
+wrappers created by other packages and never affects other users of the same R process. Every error
+caught by a `Safe*` wrapper is also recorded: `GetSafeShinyErrors()`.
+
+For interactive development, `SafeShinyTabPanel()` (or `SafeShinyTabUI()`/`SafeShinyTabServer()`)
+provides a ready-made monitoring tab: a Start/Stop button, the interactive flame chart, timing
+summary and error log once tracking is stopped. Show it only when the app is opened with
+`?safeshinytab=1`:
+
+```{r, eval = FALSE}
+ui <- function(request) {
+  tabs <- list(tabPanel("App", ...))
+  if (SafeShinyTabRequested(request)) tabs <- c(tabs, list(SafeShinyTabPanel("monitor")))
+  do.call(navbarPage, c(list("My app"), tabs))
+}
+server <- function(input, output, session) {
+  if (SafeShinyTabRequested(session)) SafeShinyTabServer("monitor")
+  ...
+}
+```
+
 Use `GetSafeShinyTimingRaw()` if you need the per-call detail (including whether each call
 finished `"ok"`, hit a `"silent"` `req()`/`validate()` stop, or was caught as an `"error"`) rather
 than the aggregated-by-label view `GetSafeShinyTiming()` returns. Call `ResetSafeShinyTiming()` to

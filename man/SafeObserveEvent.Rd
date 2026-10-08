@@ -8,7 +8,7 @@ SafeObserveEvent(
   eventExpr,
   handlerExpr,
   onError = NULL,
-  trackTime = getOption("SafeShiny.trackTime", FALSE),
+  trackTime = NA,
   label = NULL,
   quiet = FALSE,
   event.env = parent.frame(),
@@ -37,8 +37,10 @@ error is caught (not called for a \code{shiny::req()}/\code{validate()} silent s
 for application-specific handling, e.g. recording the failure against a specific piece of
 application state, or showing a \code{shiny::showNotification()}.}
 
-\item{trackTime}{logical, default \code{getOption("SafeShiny.trackTime", FALSE)} (i.e. \code{FALSE}
-unless that option is set - see \code{\link{GetSafeShinyTiming}}). When \code{TRUE}, the wall-clock time spent
+\item{trackTime}{logical, default \code{NA} ("auto"): the call is timed only while tracking is
+switched on, i.e. when \code{options(SafeShiny.trackTime = TRUE)} is set or the session's
+tracking was started with \code{\link{StartSafeShinyTracking}} - decided each time the call runs.
+\code{TRUE}/\code{FALSE} force tracking on/off regardless. When tracked, the wall-clock time spent
 evaluating \code{x} is recorded (whether it finishes normally, is caught by \code{onError},
 or hits a \code{req()}/\code{validate()} silent stop - all three consume real time) - see
 \code{\link{GetSafeShinyTiming}}/\code{\link{SummarizeSafeShinyTiming}}.}

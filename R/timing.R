@@ -1,6 +1,9 @@
 #' @keywords internal
 .safeShinyEnv <- new.env(parent = emptyenv())
 .safeShinyEnv$stores <- list()
+.safeShinyEnv$errors <- list()
+.safeShinyEnv$tracking <- list()
+.safeShinyEnv$cleanup <- list()
 
 #' Resolve the storage key for a Shiny session/domain
 #'
@@ -78,6 +81,7 @@
 .startSafeShinyTiming <- function(domain, label, type = NA_character_) {
   key <- .safeShinySessionKey(domain)
   .safeShinyEnsureStore(key)
+  .safeShinyRegisterCleanup(domain)
   store <- .safeShinyEnv$stores[[key]]
   id <- store$nextId
   parent <- if (length(store$stack)) store$stack[length(store$stack)] else NA_integer_
@@ -324,4 +328,144 @@ ResetSafeShinyTiming <- function(session = shiny::getDefaultReactiveDomain()) {
   } else {
     "render"
   }
+}
+
+#' Should a call be timed right now?
+#'
+#' @param trackTime \code{TRUE}, \code{FALSE} or \code{NA}/\code{NULL} (auto).
+#' @param domain a Shiny reactive domain (session object), or \code{NULL}.
+#' @return logical scalar. Auto means: the \code{SafeShiny.trackTime} option is \code{TRUE}, or
+#'   tracking was started for this session with \code{\link{StartSafeShinyTracking}}.
+#' @keywords internal
+.safeShinyShouldTrack <- function(trackTime, domain) {
+  if (isTRUE(trackTime)) return(TRUE)
+  if (isFALSE(trackTime)) return(FALSE)
+  isTRUE(getOption("SafeShiny.trackTime", FALSE)) || IsSafeShinyTracking(domain)
+}
+
+#' Start timing every tracked call in a session
+#'
+#' Switches execution-time tracking on for one Shiny session, at run time: every \code{Safe*}
+#' call that doesn't force \code{trackTime} on or off is timed from now on, including calls
+#' created by other packages (e.g. MMVshiny-generated observers/reactives). Because the switch is
+#' per session, other users of the same R process are not affected.
+#'
+#' @inheritParams GetSafeShinyTiming
+#' @param reset logical, default \code{TRUE}: discard previously recorded timings first.
+#' @return \code{NULL}, invisibly.
+#'
+#' @examples
+#' StartSafeShinyTracking(session = NULL)
+#' IsSafeShinyTracking(session = NULL)
+#' StopSafeShinyTracking(session = NULL)
+#'
+#' @export
+StartSafeShinyTracking <- function(session = shiny::getDefaultReactiveDomain(), reset = TRUE) {
+  key <- .safeShinySessionKey(session)
+  if (isTRUE(reset)) {
+    ResetSafeShinyTiming(session = session)
+  }
+  .safeShinyEnv$tracking[[key]] <- TRUE
+  .safeShinyRegisterCleanup(session)
+  invisible(NULL)
+}
+
+#' @rdname StartSafeShinyTracking
+#' @export
+StopSafeShinyTracking <- function(session = shiny::getDefaultReactiveDomain()) {
+  .safeShinyEnv$tracking[[.safeShinySessionKey(session)]] <- FALSE
+  invisible(NULL)
+}
+
+#' @rdname StartSafeShinyTracking
+#' @return \code{IsSafeShinyTracking()} returns a logical scalar.
+#' @export
+IsSafeShinyTracking <- function(session = shiny::getDefaultReactiveDomain()) {
+  isTRUE(.safeShinyEnv$tracking[[.safeShinySessionKey(session)]])
+}
+
+#' Free a session's timing/error/tracking state when the session ends
+#'
+#' Registers (once per session) an \code{onSessionEnded} callback; a no-op for \code{NULL} or for
+#' objects without \code{onSessionEnded}.
+#'
+#' @param domain a Shiny reactive domain (session object), or \code{NULL}.
+#' @return nothing - side effect only.
+#' @keywords internal
+.safeShinyRegisterCleanup <- function(domain) {
+  if (is.null(domain) || is.null(domain$token) || !is.function(domain$onSessionEnded)) {
+    return(invisible(NULL))
+  }
+  key <- .safeShinySessionKey(domain)
+  if (isTRUE(.safeShinyEnv$cleanup[[key]])) {
+    return(invisible(NULL))
+  }
+  .safeShinyEnv$cleanup[[key]] <- TRUE
+  domain$onSessionEnded(function() {
+    .safeShinyEnv$stores[[key]] <- NULL
+    .safeShinyEnv$errors[[key]] <- NULL
+    .safeShinyEnv$tracking[[key]] <- NULL
+    .safeShinyEnv$cleanup[[key]] <- NULL
+  })
+  invisible(NULL)
+}
+
+#' Record a caught (non-silent) error
+#'
+#' Keeps the most recent 500 per session.
+#'
+#' @param domain a Shiny reactive domain (session object), or \code{NULL}.
+#' @param label character string identifying the call site.
+#' @param type character string, the kind of call (see \code{.recordSafeShinyTiming}).
+#' @param e the caught condition.
+#' @return nothing - side effect only.
+#' @keywords internal
+.recordSafeShinyError <- function(domain, label, type, e) {
+  key <- .safeShinySessionKey(domain)
+  call <- conditionCall(e)
+  rec <- list(time = Sys.time(), label = label, type = type, message = conditionMessage(e),
+              call = if (is.null(call)) NA_character_ else paste(deparse(call), collapse = " "))
+  errs <- c(.safeShinyEnv$errors[[key]], list(rec))
+  if (length(errs) > 500) errs <- errs[(length(errs) - 499):length(errs)]
+  .safeShinyEnv$errors[[key]] <- errs
+  .safeShinyRegisterCleanup(domain)
+  invisible(NULL)
+}
+
+#' Get the errors caught by the Safe* wrappers in a Shiny session
+#'
+#' Every genuine error caught by a \code{Safe*} wrapper (not \code{shiny::req()}/\code{validate()}
+#' silent stops) is recorded, whether or not timing is tracked; the most recent 500 per session are
+#' kept.
+#'
+#' @inheritParams GetSafeShinyTiming
+#' @return a data.frame with columns \code{time}, \code{label}, \code{type}, \code{message}
+#'   and \code{call}, oldest first. Zero rows if no error was caught.
+#'
+#' @examples
+#' ResetSafeShinyErrors(session = NULL)
+#' GetSafeShinyErrors(session = NULL)
+#'
+#' @export
+GetSafeShinyErrors <- function(session = shiny::getDefaultReactiveDomain()) {
+  errs <- .safeShinyEnv$errors[[.safeShinySessionKey(session)]]
+  if (length(errs) == 0) {
+    return(data.frame(time = as.POSIXct(character(0)), label = character(0), type = character(0),
+                      message = character(0), call = character(0), stringsAsFactors = FALSE))
+  }
+  data.frame(
+    time = do.call(c, lapply(errs, function(r) r$time)),
+    label = vapply(errs, function(r) r$label, character(1)),
+    type = vapply(errs, function(r) r$type, character(1)),
+    message = vapply(errs, function(r) r$message, character(1)),
+    call = vapply(errs, function(r) r$call, character(1)),
+    stringsAsFactors = FALSE
+  )
+}
+
+#' @rdname GetSafeShinyErrors
+#' @export
+ResetSafeShinyErrors <- function(session = shiny::getDefaultReactiveDomain()) {
+  .safeShinyEnv$errors[[.safeShinySessionKey(session)]] <- NULL
+  invisible(NULL)
 }

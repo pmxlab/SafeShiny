@@ -8,7 +8,7 @@ SafeDownloadHandler(
   filename,
   content,
   onError = NULL,
-  trackTime = getOption("SafeShiny.trackTime", FALSE),
+  trackTime = NA,
   label = NULL,
   quiet = FALSE,
   contentType = NA,
@@ -24,8 +24,10 @@ path to write to).}
 \item{onError}{optional function called with the caught condition object whenever a genuine
 error is caught (not called for a \code{shiny::req()}/\code{validate()} silent stop).}
 
-\item{trackTime}{logical, default \code{getOption("SafeShiny.trackTime", FALSE)} (i.e. \code{FALSE}
-unless that option is set - see \code{\link{GetSafeShinyTiming}}). When \code{TRUE}, the wall-clock time spent
+\item{trackTime}{logical, default \code{NA} ("auto"): the call is timed only while tracking is
+switched on, i.e. when \code{options(SafeShiny.trackTime = TRUE)} is set or the session's
+tracking was started with \code{\link{StartSafeShinyTracking}} - decided each time the call runs.
+\code{TRUE}/\code{FALSE} force tracking on/off regardless. When tracked, the wall-clock time spent
 running \code{content} is recorded - see \code{\link{GetSafeShinyTiming}}/
 \code{\link{SummarizeSafeShinyTiming}}.}
 
