@@ -32,6 +32,10 @@ of \code{expr} for SafeShiny's purposes (and to Shiny's own default for the reac
 \item{quiet}{logical, default \code{FALSE}. When \code{FALSE}, a caught error is also reported
 via \code{message()} (in addition to calling \code{onError}, if supplied).}
 
+\item{env}{the environment \code{expr} is evaluated in, as for \code{shiny::reactive()}.}
+
+\item{quoted}{logical, default \code{FALSE}. Whether \code{expr} is already a quoted expression.}
+
 \item{domain}{passed to \code{shiny::reactive()}; the reactive domain, by default the current one.}
 }
 \value{

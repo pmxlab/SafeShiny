@@ -21,6 +21,8 @@
 #' @param label optional character string identifying this reactive for timing/error-logging
 #'   purposes, also passed on as the reactive's own label. Defaults to a short, truncated deparse
 #'   of \code{expr} for SafeShiny's purposes (and to Shiny's own default for the reactive).
+#' @param env the environment \code{expr} is evaluated in, as for \code{shiny::reactive()}.
+#' @param quoted logical, default \code{FALSE}. Whether \code{expr} is already a quoted expression.
 #' @param domain passed to \code{shiny::reactive()}; the reactive domain, by default the current one.
 #'
 #' @return a reactive expression, exactly as returned by \code{shiny::reactive()}.

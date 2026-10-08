@@ -236,16 +236,40 @@ output$report <- SafeDownloadHandler(
 )
 ```
 
+## SafeReactive()
+
+`SafeReactive()` wraps `shiny::reactive()` and belongs to the observability family above, not the
+swallowing one: it **catches, calls `onError()`, then re-raises the original error unchanged**, so
+whatever consumes the reactive still gets Shiny's own native degradation. It exists for two
+reasons that have nothing to do with crash prevention:
+
+1. **A hook for app-level bookkeeping.** A failing computation can be rolled into your own status
+   tracking (e.g. so a report-generation step knows to skip that item), which Shiny's local error
+   box cannot do.
+2. **Timing coverage of the computation layer.** In a typical app the real compute time lives in
+   plain `reactive()` expressions, not in observers (which mostly dispatch) or renders (which
+   mostly format). `trackTime = TRUE` on `SafeReactive()` measures that layer, making the
+   `untracked_time` estimate in `SummarizeSafeShinyTiming()` far more meaningful.
+
+```{r}
+server <- function(input, output, session) {
+  fit <- SafeReactive({
+    expensiveFit(input$n)
+  }, onError = function(e) recordFitFailure(conditionMessage(e)),
+     trackTime = TRUE, label = "fit")
+
+  output$summary <- renderPrint(fit())
+}
+```
+
+Normal reactive caching is unchanged: once the expression has thrown, reading the reactive again
+before its next invalidation re-raises the same cached error without recomputing, so `onError()`
+fires once per failed computation, not once per read. `req()`/`validate()` silent stops are
+re-raised unchanged and never reach `onError()`.
+
 ## Roadmap
 
 Implemented: `SafeObserve()`/`SafeObserveEvent()` (swallowing - the only place nothing else would
-contain the error), `SafeRender()`/`SafeRenderPlot()`/`SafeRenderUI()`/`SafeRenderTable()`/
-`SafeDownloadHandler()` (observability-only - Shiny already contains these on its own), and
-`SafeReactive()` (observability-only as well).
-
-`SafeReactive()` wraps `shiny::reactive()`. It is *not* about crash prevention - Shiny already
-contains a failing reactive consumed by an output. It catches the error, calls `onError()`, and
-re-raises it unchanged, so the app can roll a computation failure into its own status
-bookkeeping; and with `trackTime = TRUE` it covers the computation layer, where most real compute
-time lives. Reactive caching is unchanged: a cached error is re-raised without recomputing and
-without firing `onError()` again.
+contain the error), and `SafeReactive()`, `SafeRender()`/`SafeRenderPlot()`/`SafeRenderUI()`/
+`SafeRenderTable()`/`SafeDownloadHandler()` (observability-only - Shiny already contains these
+on its own).
