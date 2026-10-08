@@ -4,7 +4,7 @@
 \alias{.safeShinyTrimWindow}
 \title{The time window of a trimmed summary/flame chart}
 \usage{
-.safeShinyTrimWindow(raw, minTime = 0.01)
+.safeShinyTrimWindow(raw, minTime = 0)
 }
 \arguments{
 \item{raw}{data.frame as returned by \code{GetSafeShinyTimingRaw()}, at least one row.}

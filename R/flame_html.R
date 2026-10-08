@@ -16,8 +16,8 @@
 #'   \code{\link{StartSafeShinyTracking}} to \code{\link{StopSafeShinyTracking}} (or to now), so idle
 #'   time before and after the activity is shown (and counted as untracked). Without a recorded
 #'   window (tracking not started with these functions) it is the same as \code{TRUE}.
-#' @param trimMinTime numeric, seconds, default \code{0.01}. With \code{trim = TRUE}, calls shorter
-#'   than this do not set the edges of the window (see \code{\link{SummarizeSafeShinyTiming}}).
+#' @param trimMinTime numeric, seconds, default \code{0} (every call counts). With \code{trim = TRUE}, calls shorter
+#'   than this do not set the edges of the window (see \code{\link{SummarizeSafeShinyTiming}}); e.g. \code{0.01} ignores tiny tab-switch observers.
 #'
 #' @return an \code{htmltools} browsable tag, or \code{NULL} (invisibly, with a message) if nothing
 #'   has been tracked yet.
@@ -36,7 +36,7 @@
 #' @importFrom jsonlite toJSON
 #' @export
 PlotSafeShinyFlameHTML <- function(session = shiny::getDefaultReactiveDomain(), height = 22,
-                                 trim = TRUE, trimMinTime = 0.01) {
+                                 trim = TRUE, trimMinTime = 0) {
   raw <- GetSafeShinyTimingRaw(session = session)
   if (nrow(raw) == 0) {
     message("[SafeShiny] No tracked calls to plot.")
