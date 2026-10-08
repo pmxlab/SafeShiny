@@ -74,3 +74,29 @@ test_that("SafeShinyTabUI/Panel build, and the module server starts and stops tr
     expect_match(output$summary, "SafeShiny timing summary", fixed = TRUE)
   })
 })
+
+test_that("options(SafeShiny.trackTime = FALSE) is a master kill switch", {
+  old <- options(SafeShiny.trackTime = FALSE)
+  on.exit(options(old), add = TRUE)
+  expect_true(IsSafeShinyTrackingDisabled())
+
+  fake <- list(token = paste0("kill-", as.numeric(Sys.time())))
+  expect_message(StartSafeShinyTracking(fake), "disabled")
+  expect_false(IsSafeShinyTracking(fake))
+
+  shiny::testServer(function(input, output, session) {
+    ResetSafeShinyTiming(session = session)
+    SafeObserveEvent(input$x, { 1 }, ignoreInit = TRUE, label = "auto")
+    SafeObserveEvent(input$y, { 1 }, ignoreInit = TRUE, label = "forced", trackTime = TRUE)
+  }, expr = {
+    settle(session)
+    trigger(session, x = 1)
+    trigger(session, y = 1)
+    expect_equal(nrow(GetSafeShinyTimingRaw(session = session)), 0)
+  })
+
+  options(SafeShiny.trackTime = NULL)
+  expect_false(IsSafeShinyTrackingDisabled())
+  options(SafeShiny.trackTime = TRUE)
+  expect_false(IsSafeShinyTrackingDisabled())
+})

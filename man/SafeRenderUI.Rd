@@ -24,7 +24,8 @@ error is caught (not called for a \code{shiny::req()}/\code{validate()} silent s
 \item{trackTime}{logical, default \code{NA} ("auto"): the call is timed only while tracking is
 switched on, i.e. when \code{options(SafeShiny.trackTime = TRUE)} is set or the session's
 tracking was started with \code{\link{StartSafeShinyTracking}} - decided each time the call runs.
-\code{TRUE}/\code{FALSE} force tracking on/off regardless. When tracked, the wall-clock time spent
+\code{TRUE}/\code{FALSE} force tracking on/off, except that \code{options(SafeShiny.trackTime = FALSE)}
+is a master switch that disables tracking everywhere (see \code{\link{IsSafeShinyTrackingDisabled}}). When tracked, the wall-clock time spent
 evaluating \code{expr} is recorded - see \code{\link{GetSafeShinyTiming}}/
 \code{\link{SummarizeSafeShinyTiming}}.}
 

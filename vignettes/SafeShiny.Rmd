@@ -151,6 +151,11 @@ with `StopSafeShinyTracking(session)`) - decided each time the call runs, so it 
 wrappers created by other packages and never affects other users of the same R process. Every error
 caught by a `Safe*` wrapper is also recorded: `GetSafeShinyErrors()`.
 
+`options(SafeShiny.trackTime = FALSE)` is a master kill switch (e.g. for production): the decision
+is made once when each wrapper is created, so every call takes the cheapest path, and neither
+`StartSafeShinyTracking()`, an explicit `trackTime = TRUE` nor the monitoring tab can switch tracking
+on (`IsSafeShinyTrackingDisabled()`). Unset means auto; `TRUE` means always on.
+
 For interactive development, `SafeShinyTabPanel()` (or `SafeShinyTabUI()`/`SafeShinyTabServer()`)
 provides a ready-made monitoring tab: a Start/Stop button, the interactive flame chart, timing
 summary and error log once tracking is stopped. Show it only when the app is opened with

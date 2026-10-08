@@ -348,6 +348,7 @@ ResetSafeShinyTiming <- function(session = shiny::getDefaultReactiveDomain()) {
 #'   tracking was started for this session with \code{\link{StartSafeShinyTracking}}.
 #' @keywords internal
 .safeShinyShouldTrack <- function(trackTime, domain) {
+  if (IsSafeShinyTrackingDisabled()) return(FALSE)
   if (isTRUE(trackTime)) return(TRUE)
   if (isFALSE(trackTime)) return(FALSE)
   isTRUE(getOption("SafeShiny.trackTime", FALSE)) || IsSafeShinyTracking(domain)
@@ -371,6 +372,10 @@ ResetSafeShinyTiming <- function(session = shiny::getDefaultReactiveDomain()) {
 #'
 #' @export
 StartSafeShinyTracking <- function(session = shiny::getDefaultReactiveDomain(), reset = TRUE) {
+  if (IsSafeShinyTrackingDisabled()) {
+    message("[SafeShiny] Tracking is disabled by options(SafeShiny.trackTime = FALSE); not started.")
+    return(invisible(NULL))
+  }
   key <- .safeShinySessionKey(session)
   if (isTRUE(reset)) {
     ResetSafeShinyTiming(session = session)
@@ -392,6 +397,24 @@ StopSafeShinyTracking <- function(session = shiny::getDefaultReactiveDomain()) {
 #' @export
 IsSafeShinyTracking <- function(session = shiny::getDefaultReactiveDomain()) {
   isTRUE(.safeShinyEnv$tracking[[.safeShinySessionKey(session)]])
+}
+
+#' Is execution-time tracking disabled globally?
+#'
+#' \code{options(SafeShiny.trackTime = FALSE)} is a master kill switch, e.g. for production: wrappers
+#' created while it is set take the cheapest possible path for every call (the decision is made once,
+#' at creation), \code{\link{StartSafeShinyTracking}} does nothing, and not even an explicit
+#' \code{trackTime = TRUE} (or the monitoring tab) can switch tracking on. When the option is unset,
+#' tracking is "auto" (switchable per session at run time); when \code{TRUE}, always on.
+#'
+#' @return a logical scalar, \code{TRUE} if the option is exactly \code{FALSE}.
+#'
+#' @examples
+#' IsSafeShinyTrackingDisabled()
+#'
+#' @export
+IsSafeShinyTrackingDisabled <- function() {
+  isFALSE(getOption("SafeShiny.trackTime"))
 }
 
 #' Free a session's timing/error/tracking state when the session ends

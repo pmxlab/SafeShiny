@@ -148,14 +148,19 @@ SafeShinyTabServer <- function(id) {
     })
 
     output$controls <- shiny::renderUI({
-      if (isTRUE(rv$tracking)) {
+      if (IsSafeShinyTrackingDisabled()) {
+        shiny::span(style = "color: #c00;",
+                    "Tracking is disabled (options(SafeShiny.trackTime = FALSE)).")
+      } else if (isTRUE(rv$tracking)) {
         shiny::actionButton(ns("stop"), "Stop tracking", class = "btn-danger")
       } else {
         shiny::actionButton(ns("start"), "Start tracking", class = "btn-success")
       }
     })
     output$status <- shiny::renderUI({
-      if (isTRUE(rv$tracking)) {
+      if (IsSafeShinyTrackingDisabled()) {
+        NULL
+      } else if (isTRUE(rv$tracking)) {
         shiny::span(style = "margin-left: 10px; color: #c00;",
                     paste0("Tracking since ", format(rv$started, "%H:%M:%S"),
                            " - interact with the app, then press Stop."))
