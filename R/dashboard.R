@@ -44,6 +44,11 @@ SafeShinyTabRequested <- function(x, param = "safeshinytab") {
 #' Combine with \code{\link{SafeShinyTabRequested}} to show it only to developers.
 #'
 #' @param id character string, the module id.
+#' @param height character string or number, maximum height of the area below the Start/Stop
+#'   button; its content scrolls inside it. A percentage such as \code{"60\%"} is read as a share of
+#'   the \emph{viewport} height (a percentage of an auto-height parent would not work); any other CSS
+#'   length (\code{"500px"}, \code{"60vh"}) is used as is, and a plain number means pixels. Lower it
+#'   if a fixed footer of the app covers the bottom of the tab. Default \code{"60\%"}.
 #' @param title character string, title of the tab (default \code{"SafeShiny"}).
 #' @param ... further arguments passed to \code{shiny::tabPanel()}.
 #' @return \code{SafeShinyTabUI()} an \code{htmltools} tag list; \code{SafeShinyTabPanel()} a
@@ -57,14 +62,15 @@ SafeShinyTabRequested <- function(x, param = "safeshinytab") {
 #' @importFrom shiny NS tagList uiOutput tabsetPanel tabPanel downloadButton actionButton
 #' @importFrom shiny verbatimTextOutput tableOutput h4 div p checkboxInput
 #' @export
-SafeShinyTabUI <- function(id) {
+SafeShinyTabUI <- function(id, height = "60%") {
   ns <- shiny::NS(id)
+  h <- .safeShinyCssHeight(height)
   tableOut <- function(outId) {
     if (requireNamespace("DT", quietly = TRUE)) DT::DTOutput(ns(outId)) else shiny::tableOutput(ns(outId))
   }
   # each sub-tab scrolls on its own, so wide/long tables never run off the window
   scroll <- function(...) {
-    shiny::div(style = "margin-top: 10px; max-height: calc(100vh - 230px); overflow: auto;", ...)
+    shiny::div(style = paste0("margin-top: 10px; max-height: ", h, "; overflow: auto;"), ...)
   }
   shiny::tagList(
     shiny::div(
@@ -109,7 +115,7 @@ SafeShinyTabUI <- function(id) {
             shiny::actionButton(ns("consoleClear"), "Clear"),
             shiny::downloadButton(ns("dlConsole"), "Download (.txt)"),
             shiny::checkboxInput(ns("consoleAuto"), "Auto-refresh every 2 s", value = FALSE),
-            shiny::div(style = "max-height: calc(100vh - 380px); overflow: auto;",
+            shiny::div(style = paste0("max-height: calc(", h, " - 130px); overflow: auto;"),
                        shiny::verbatimTextOutput(ns("console")))
           )
         )
@@ -120,8 +126,20 @@ SafeShinyTabUI <- function(id) {
 
 #' @rdname SafeShinyTabUI
 #' @export
-SafeShinyTabPanel <- function(id, title = "SafeShiny", ...) {
-  shiny::tabPanel(title, SafeShinyTabUI(id), ...)
+SafeShinyTabPanel <- function(id, title = "SafeShiny", height = "60%", ...) {
+  shiny::tabPanel(title, SafeShinyTabUI(id, height = height), ...)
+}
+
+#' Turn the tab's height argument into a CSS length
+#' @param height character string or number, see \code{\link{SafeShinyTabUI}}.
+#' @return a CSS length string; percentages become viewport-height units.
+#' @keywords internal
+.safeShinyCssHeight <- function(height) {
+  if (is.numeric(height)) return(paste0(height, "px"))
+  if (!is.character(height) || length(height) != 1 || !nzchar(height)) {
+    stop("`height` must be a CSS length string such as \"60%\" or \"500px\", or a number of pixels.")
+  }
+  if (grepl("^[0-9.]+ *%$", height)) paste0(sub(" *%$", "", height), "vh") else height
 }
 
 #' SafeShiny monitoring tab (server)
