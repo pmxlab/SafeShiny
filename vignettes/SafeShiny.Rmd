@@ -236,15 +236,40 @@ output$report <- SafeDownloadHandler(
 )
 ```
 
+## SafeReactive()
+
+`SafeReactive()` wraps `shiny::reactive()` and belongs to the observability family above, not the
+swallowing one: it **catches, calls `onError()`, then re-raises the original error unchanged**, so
+whatever consumes the reactive still gets Shiny's own native degradation. It exists for two
+reasons that have nothing to do with crash prevention:
+
+1. **A hook for app-level bookkeeping.** A failing computation can be rolled into your own status
+   tracking (e.g. so a report-generation step knows to skip that item), which Shiny's local error
+   box cannot do.
+2. **Timing coverage of the computation layer.** In a typical app the real compute time lives in
+   plain `reactive()` expressions, not in observers (which mostly dispatch) or renders (which
+   mostly format). `trackTime = TRUE` on `SafeReactive()` measures that layer, making the
+   `untracked_time` estimate in `SummarizeSafeShinyTiming()` far more meaningful.
+
+```{r}
+server <- function(input, output, session) {
+  fit <- SafeReactive({
+    expensiveFit(input$n)
+  }, onError = function(e) recordFitFailure(conditionMessage(e)),
+     trackTime = TRUE, label = "fit")
+
+  output$summary <- renderPrint(fit())
+}
+```
+
+Normal reactive caching is unchanged: once the expression has thrown, reading the reactive again
+before its next invalidation re-raises the same cached error without recomputing, so `onError()`
+fires once per failed computation, not once per read. `req()`/`validate()` silent stops are
+re-raised unchanged and never reach `onError()`.
+
 ## Roadmap
 
 Implemented: `SafeObserve()`/`SafeObserveEvent()` (swallowing - the only place nothing else would
-contain the error) and `SafeRender()`/`SafeRenderPlot()`/`SafeRenderUI()`/`SafeRenderTable()`/
-`SafeDownloadHandler()` (observability-only - Shiny already contains these on its own).
-
-Not implemented: a standalone `SafeReactive()` for a plain `reactive()` that's consumed by
-*another reactive* rather than directly by an output or one of the five wrappers above. Per the
-mechanism explained in this vignette, a reactive consumed only by a render output is already safe
-without any wrapping - but a reactive consumed by another reactive, several layers deep, with no
-output or observer at the end of that particular chain, hasn't been separately verified yet.
-Pending further validation of exactly where (if anywhere) that case still needs its own wrapper.
+contain the error), and `SafeReactive()`, `SafeRender()`/`SafeRenderPlot()`/`SafeRenderUI()`/
+`SafeRenderTable()`/`SafeDownloadHandler()` (observability-only - Shiny already contains these
+on its own).

@@ -1,7 +1,7 @@
 Package: SafeShiny
 Type: Package
-Title: Safe Observers and Renderers for Shiny with Execution-Time Tracking
-Version: 0.2.1
+Title: Safe Observers, Reactives and Renderers for Shiny with Execution-Time Tracking
+Version: 0.3.0
 Authors@R: c(person("Venelin", "Mitov", email = "vmitov@gmail.com",
                     role = c("aut", "cre", "cph")))
 Maintainer: Venelin Mitov <vmitov@gmail.com>
