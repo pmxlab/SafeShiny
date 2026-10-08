@@ -100,3 +100,50 @@ test_that("options(SafeShiny.trackTime = FALSE) is a master kill switch", {
   options(SafeShiny.trackTime = TRUE)
   expect_false(IsSafeShinyTrackingDisabled())
 })
+
+test_that("trim controls whether the summary/flame window covers idle time before and after", {
+  s <- list(token = paste0("trim-", as.numeric(Sys.time())))
+  StartSafeShinyTracking(s)
+  Sys.sleep(0.3)  # idle before the first tracked call
+  tok <- SafeShiny:::.startSafeShinyTiming(s, "work", "observe")
+  Sys.sleep(0.1)
+  SafeShiny:::.endSafeShinyTiming(s, tok, "ok")
+  Sys.sleep(0.3)  # idle after the last tracked call
+  StopSafeShinyTracking(s)
+  Sys.sleep(0.2)  # time after Stop never counts
+
+  trimmed <- SummarizeSafeShinyTiming(s, trim = TRUE)
+  full <- SummarizeSafeShinyTiming(s, trim = FALSE)
+  expect_equal(trimmed$wall_clock_elapsed, 0.1, tolerance = 0.5)
+  expect_lt(trimmed$untracked_time, 0.05)
+  expect_gt(full$wall_clock_elapsed, 0.65)
+  expect_lt(full$wall_clock_elapsed, 0.9)
+  # no drift once stopped
+  expect_equal(SummarizeSafeShinyTiming(s)$wall_clock_elapsed, full$wall_clock_elapsed)
+
+  expect_match(as.character(PlotSafeShinyFlameHTML(s, trim = TRUE)), '"xmax":0.1', fixed = TRUE)
+  xmax <- function(w) as.numeric(sub('.*"xmax":([0-9.]+).*', "\\1", as.character(w)))
+  expect_gt(xmax(PlotSafeShinyFlameHTML(s, trim = FALSE)), 0.65)
+  ResetSafeShinyTiming(s)
+})
+
+test_that("console capture records output, clears per session and restores the sinks", {
+  s <- list(token = paste0("con-", as.numeric(Sys.time())))
+  n0 <- sink.number()
+  expect_false(SafeShiny:::.safeShinyConsoleActive(s))
+  SafeShiny:::.safeShinyConsoleStart(s)
+  expect_true(SafeShiny:::.safeShinyConsoleActive(s))
+  cat("hello console\n")
+  message("a message")
+  lines <- SafeShiny:::.safeShinyConsoleGet(s)
+  expect_true("hello console" %in% lines)
+  expect_true("a message" %in% lines)
+  SafeShiny:::.safeShinyConsoleClear(s)
+  expect_length(SafeShiny:::.safeShinyConsoleGet(s), 0)
+  cat("after clear\n")
+  expect_equal(SafeShiny:::.safeShinyConsoleGet(s), "after clear")
+  SafeShiny:::.safeShinyConsoleStop(s)
+  expect_false(SafeShiny:::.safeShinyConsoleActive(s))
+  expect_equal(sink.number(), n0)
+  expect_length(SafeShiny:::.safeShinyConsoleGet(s), 0)
+})
