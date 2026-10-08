@@ -32,7 +32,8 @@ intentional silent-stop conditions are still re-raised unchanged, exactly as wit
 
 Both also support optional execution-time tracking (`trackTime = TRUE`), to help separate time
 spent in your own business logic from time spent in Shiny's own reactive-graph maintenance - see
-`GetSafeShinyTiming()` / `SummarizeSafeShinyTiming()`.
+`GetSafeShinyTiming()` / `SummarizeSafeShinyTiming()`, or `PlotSafeShinyFlame()` for a nested
+flame chart of the tracked calls.
 
 The remaining wrappers - `SafeReactive()`, `SafeRender()`/`SafeRenderPlot()`/`SafeRenderUI()`/
 `SafeRenderTable()` and `SafeDownloadHandler()` - are different: Shiny already contains errors

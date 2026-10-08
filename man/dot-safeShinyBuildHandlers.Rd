@@ -42,8 +42,10 @@ condition is always re-raised unchanged regardless of \code{reraise}, and never 
 \code{onError()} - that case isn't a real error either way.}
 }
 \value{
-a list with elements \code{recordFn} (function(status, startTime)) and
-\code{errorHandler} (function(e, startTime)), both to be spliced into the generated
+a list with elements \code{startFn} (function(), returns an opaque token that is
+\code{NULL} when \code{trackTime} is \code{FALSE}), \code{recordFn} (function(status,
+startTime), where \code{startTime} is the token from \code{startFn()}) and
+\code{errorHandler} (function(e, startTime)), all to be spliced into the generated
 \code{tryCatch} expression via \code{bquote()}.
 }
 \description{

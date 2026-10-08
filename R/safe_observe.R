@@ -25,8 +25,10 @@
 #'   condition is always re-raised unchanged regardless of \code{reraise}, and never reaches
 #'   \code{onError()} - that case isn't a real error either way.
 #'
-#' @return a list with elements \code{recordFn} (function(status, startTime)) and
-#'   \code{errorHandler} (function(e, startTime)), both to be spliced into the generated
+#' @return a list with elements \code{startFn} (function(), returns an opaque token that is
+#'   \code{NULL} when \code{trackTime} is \code{FALSE}), \code{recordFn} (function(status,
+#'   startTime), where \code{startTime} is the token from \code{startFn()}) and
+#'   \code{errorHandler} (function(e, startTime)), all to be spliced into the generated
 #'   \code{tryCatch} expression via \code{bquote()}.
 #'
 #' @details
@@ -43,12 +45,18 @@
 #' same level to catch it.
 #' @keywords internal
 .safeShinyBuildHandlers <- function(label, domain, onError, trackTime, quiet, context, reraise = FALSE) {
-  recordFn <- function(status, startTime) {
+  startFn <- function() {
     if (!isTRUE(trackTime)) {
+      return(NULL)
+    }
+    .startSafeShinyTiming(domain = domain, label = label)
+  }
+
+  recordFn <- function(status, startTime) {
+    if (!isTRUE(trackTime) || is.null(startTime)) {
       return(invisible(NULL))
     }
-    elapsed <- as.numeric(difftime(Sys.time(), startTime, units = "secs"))
-    .recordSafeShinyTiming(domain = domain, label = label, elapsed = elapsed, status = status)
+    .endSafeShinyTiming(domain = domain, token = startTime, status = status)
   }
 
   errorHandler <- function(e, startTime) {
@@ -70,7 +78,7 @@
     invisible(NULL)
   }
 
-  list(recordFn = recordFn, errorHandler = errorHandler)
+  list(startFn = startFn, recordFn = recordFn, errorHandler = errorHandler)
 }
 
 #' Safe version of shiny::observe() that catches errors instead of crashing the session
@@ -137,7 +145,7 @@ SafeObserve <- function(x, onError = NULL, trackTime = FALSE, label = NULL, quie
   )
 
   wrapped <- bquote({
-    .safeShiny_start_time <- Sys.time()
+    .safeShiny_start_time <- .(handlers$startFn)()
     tryCatch(
       {
         .safeShiny_result <- .(x)
@@ -214,7 +222,7 @@ SafeObserveEvent <- function(eventExpr, handlerExpr, onError = NULL, trackTime =
   )
 
   wrappedHandlerExpr <- bquote({
-    .safeShiny_start_time <- Sys.time()
+    .safeShiny_start_time <- .(handlers$startFn)()
     tryCatch(
       {
         .safeShiny_result <- .(handlerExpr)

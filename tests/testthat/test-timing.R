@@ -103,3 +103,84 @@ test_that("print.SafeShinyTimingSummary prints without erroring and mentions the
   summ <- SummarizeSafeShinyTiming(session = fake)
   expect_output(print(summ), "untracked time")
 })
+
+test_that("nested tracked calls record parent/depth/start", {
+  fake <- list(token = paste0("nest-", as.numeric(Sys.time())))
+  ResetSafeShinyTiming(session = fake)
+
+  a <- SafeShiny:::.startSafeShinyTiming(fake, "a")
+  b <- SafeShiny:::.startSafeShinyTiming(fake, "b")
+  Sys.sleep(0.01)
+  SafeShiny:::.endSafeShinyTiming(fake, b, "ok")
+  c <- SafeShiny:::.startSafeShinyTiming(fake, "c")
+  SafeShiny:::.endSafeShinyTiming(fake, c, "error")
+  SafeShiny:::.endSafeShinyTiming(fake, a, "ok")
+  d <- SafeShiny:::.startSafeShinyTiming(fake, "d")
+  SafeShiny:::.endSafeShinyTiming(fake, d, "ok")
+
+  raw <- GetSafeShinyTimingRaw(session = fake)
+  byLabel <- function(l) raw[raw$label == l, ]
+  expect_equal(byLabel("a")$depth, 0L)
+  expect_true(is.na(byLabel("a")$parent))
+  expect_equal(byLabel("b")$parent, byLabel("a")$id)
+  expect_equal(byLabel("c")$parent, byLabel("a")$id)
+  expect_equal(byLabel("b")$depth, 1L)
+  expect_equal(byLabel("d")$depth, 0L)
+  expect_true(byLabel("a")$start <= byLabel("b")$start)
+  expect_true(byLabel("a")$elapsed >= byLabel("b")$elapsed)
+})
+
+test_that("ending an outer call drops unfinished inner calls from the stack", {
+  fake <- list(token = paste0("unbal-", as.numeric(Sys.time())))
+  ResetSafeShinyTiming(session = fake)
+  a <- SafeShiny:::.startSafeShinyTiming(fake, "a")
+  SafeShiny:::.startSafeShinyTiming(fake, "never-finished")
+  SafeShiny:::.endSafeShinyTiming(fake, a, "ok")
+  e <- SafeShiny:::.startSafeShinyTiming(fake, "e")
+  expect_equal(e$depth, 0L)
+})
+
+test_that("SafeObserve nesting a SafeReactive records parent/child", {
+  shiny::testServer(function(input, output, session) {
+    ResetSafeShinyTiming(session = session)
+    r <- SafeReactive({ Sys.sleep(0.005); 1 }, trackTime = TRUE, label = "inner")
+    SafeObserve({ r() }, trackTime = TRUE, label = "outer")
+    session$userData$done <- TRUE
+  }, {
+    settle(session)
+    raw <- GetSafeShinyTimingRaw(session = session)
+    expect_equal(raw$depth[raw$label == "inner"], 1L)
+    expect_equal(raw$parent[raw$label == "inner"], raw$id[raw$label == "outer"])
+    expect_equal(raw$depth[raw$label == "outer"], 0L)
+  })
+})
+
+test_that("PlotSafeShinyFlame draws and returns data, and is quiet when empty", {
+  fake <- list(token = paste0("plot-", as.numeric(Sys.time())))
+  ResetSafeShinyTiming(session = fake)
+  expect_message(expect_null(PlotSafeShinyFlame(session = fake)), "No tracked calls")
+
+  a <- SafeShiny:::.startSafeShinyTiming(fake, "a")
+  b <- SafeShiny:::.startSafeShinyTiming(fake, "b")
+  SafeShiny:::.endSafeShinyTiming(fake, b, "silent")
+  SafeShiny:::.endSafeShinyTiming(fake, a, "ok")
+  pdf(NULL)
+  on.exit(dev.off())
+  out <- PlotSafeShinyFlame(session = fake)
+  expect_equal(nrow(out), 2)
+  expect_true(all(c("t0", "t1") %in% names(out)))
+})
+
+test_that("SummarizeSafeShinyTiming does not double-count nested calls", {
+  fake <- list(token = paste0("sumnest-", as.numeric(Sys.time())))
+  ResetSafeShinyTiming(session = fake)
+  a <- SafeShiny:::.startSafeShinyTiming(fake, "a")
+  b <- SafeShiny:::.startSafeShinyTiming(fake, "b")
+  Sys.sleep(0.02)
+  SafeShiny:::.endSafeShinyTiming(fake, b, "ok")
+  SafeShiny:::.endSafeShinyTiming(fake, a, "ok")
+
+  raw <- GetSafeShinyTimingRaw(session = fake)
+  summ <- SummarizeSafeShinyTiming(session = fake)
+  expect_equal(summ$total_tracked_time, raw$elapsed[raw$label == "a"])
+})

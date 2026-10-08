@@ -58,7 +58,7 @@
     context = context, reraise = TRUE
   )
   bquote({
-    .safeShiny_start_time <- Sys.time()
+    .safeShiny_start_time <- .(handlers$startFn)()
     tryCatch(
       {
         .safeShiny_result <- .(expr)
@@ -334,7 +334,7 @@ SafeDownloadHandler <- function(filename, content, onError = NULL, trackTime = F
   )
 
   wrappedContent <- function(file) {
-    startTime <- Sys.time()
+    startTime <- handlers$startFn()
     tryCatch(
       {
         result <- content(file)
