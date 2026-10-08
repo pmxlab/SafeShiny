@@ -15,7 +15,8 @@ PlotSafeShinyFlame(
 app. Defaults to the current reactive domain.}
 
 \item{minTime}{numeric, default \code{0}. Calls shorter than this many seconds are not
-labelled (they are still drawn).}
+labelled (they are still drawn). Bars too narrow to hold their label are never labelled; use
+\code{\link{PlotSafeShinyFlameHTML}} to inspect those on hover.}
 
 \item{main}{character string, plot title.}
 }

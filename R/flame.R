@@ -17,7 +17,8 @@
 #' @param session a Shiny session, or \code{NULL} for the global store used outside a running
 #'   app. Defaults to the current reactive domain.
 #' @param minTime numeric, default \code{0}. Calls shorter than this many seconds are not
-#'   labelled (they are still drawn).
+#'   labelled (they are still drawn). Bars too narrow to hold their label are never labelled; use
+#'   \code{\link{PlotSafeShinyFlameHTML}} to inspect those on hover.
 #' @param main character string, plot title.
 #'
 #' @return the data.frame of drawn calls (see \code{\link{GetSafeShinyTimingRaw}}, with an
@@ -33,7 +34,7 @@
 #' SafeShiny:::.endSafeShinyTiming(NULL, outer, "ok")
 #' PlotSafeShinyFlame(session = NULL)
 #'
-#' @importFrom graphics plot rect text legend
+#' @importFrom graphics plot rect text legend strwidth
 #' @export
 PlotSafeShinyFlame <- function(session = shiny::getDefaultReactiveDomain(), minTime = 0,
                                main = "SafeShiny flame chart") {
@@ -60,9 +61,10 @@ PlotSafeShinyFlame <- function(session = shiny::getDefaultReactiveDomain(), minT
        ylab = "", yaxt = "n", main = main)
   rect(raw$t0, raw$depth, raw$t1, raw$depth + 1, col = fill, border = border,
        lwd = ifelse(raw$status %in% names(statusCols), 2, 1))
-  lab <- raw$elapsed >= minTime
-  text((raw$t0 + raw$t1)[lab] / 2, raw$depth[lab] + 0.5,
-       sprintf("%s (%.3gs)", raw$label[lab], raw$elapsed[lab]), cex = 0.7, col = "white")
+  txt <- sprintf("%s (%.3gs)", raw$label, raw$elapsed)
+  # only label bars wide enough to hold their text, so labels never overlap
+  lab <- raw$elapsed >= minTime & graphics::strwidth(txt, cex = 0.7) <= (raw$t1 - raw$t0)
+  text((raw$t0 + raw$t1)[lab] / 2, raw$depth[lab] + 0.5, txt[lab], cex = 0.7, col = "white")
   top <- raw[raw$depth == 0, ]
   untracked <- max(xmax - sum(top$elapsed), 0)
   legend("bottomright", bty = "n", cex = 0.8, text.col = "grey30",
