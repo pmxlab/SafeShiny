@@ -31,10 +31,12 @@
 #' @param id integer id of the call, unique within the session store, or \code{NA}.
 #' @param parent integer id of the enclosing tracked call, or \code{NA} for a top-level call.
 #' @param depth integer nesting depth (0 for a top-level call).
+#' @param type character string, the kind of tracked call: \code{"observe"}, \code{"react"},
+#'   \code{"render"}, \code{"download"}, or \code{NA}.
 #' @return nothing - side effect only.
 #' @keywords internal
 .recordSafeShinyTiming <- function(domain, label, elapsed, status, start = NULL, id = NA_integer_,
-                                   parent = NA_integer_, depth = 0L) {
+                                   parent = NA_integer_, depth = 0L, type = NA_character_) {
   key <- .safeShinySessionKey(domain)
   .safeShinyEnsureStore(key)
   now <- Sys.time()
@@ -44,7 +46,8 @@
   n <- length(.safeShinyEnv$stores[[key]]$records)
   .safeShinyEnv$stores[[key]]$records[[n + 1]] <- list(
     label = label, elapsed = elapsed, status = status, timestamp = now,
-    start = start, id = as.integer(id), parent = as.integer(parent), depth = as.integer(depth)
+    start = start, id = as.integer(id), parent = as.integer(parent), depth = as.integer(depth),
+    type = as.character(type)
   )
   invisible(NULL)
 }
@@ -69,9 +72,10 @@
 #'
 #' @param domain a Shiny reactive domain (session object), or \code{NULL}.
 #' @param label character string identifying the call site.
+#' @param type character string, see \code{.recordSafeShinyTiming}.
 #' @return an opaque token (a list) to be passed to \code{.endSafeShinyTiming()}.
 #' @keywords internal
-.startSafeShinyTiming <- function(domain, label) {
+.startSafeShinyTiming <- function(domain, label, type = NA_character_) {
   key <- .safeShinySessionKey(domain)
   .safeShinyEnsureStore(key)
   store <- .safeShinyEnv$stores[[key]]
@@ -80,7 +84,7 @@
   depth <- length(store$stack)
   .safeShinyEnv$stores[[key]]$nextId <- id + 1L
   .safeShinyEnv$stores[[key]]$stack <- c(store$stack, id)
-  list(start = Sys.time(), id = id, parent = parent, depth = depth, label = label)
+  list(start = Sys.time(), id = id, parent = parent, depth = depth, label = label, type = type)
 }
 
 #' Finish timing a tracked call: pop it off the call stack and record it
@@ -105,7 +109,8 @@
   elapsed <- as.numeric(difftime(Sys.time(), token$start, units = "secs"))
   .recordSafeShinyTiming(
     domain = domain, label = token$label, elapsed = elapsed, status = status,
-    start = token$start, id = token$id, parent = token$parent, depth = token$depth
+    start = token$start, id = token$id, parent = token$parent, depth = token$depth,
+    type = token$type
   )
 }
 
@@ -122,8 +127,9 @@
 #'   \code{shiny::getDefaultReactiveDomain()}; pass \code{NULL} explicitly (or call from outside
 #'   a running session) to read the fallback \code{"global"} store used when no session exists.
 #'
-#' @return a data.frame with columns \code{label}, \code{n}, \code{total_time}, \code{mean_time},
-#'   \code{last_time}, sorted by \code{total_time} descending. Zero rows if nothing has been
+#' @return a data.frame with columns \code{label}, \code{type} (\code{"observe"}, \code{"react"},
+#'   \code{"render"} or \code{"download"}; the first type seen for that label), \code{n},
+#'   \code{total_time}, \code{mean_time}, \code{last_time}, sorted by \code{total_time} descending. Zero rows if nothing has been
 #'   tracked yet.
 #'
 #' @examples
@@ -135,7 +141,7 @@
 GetSafeShinyTiming <- function(session = shiny::getDefaultReactiveDomain()) {
   raw <- GetSafeShinyTimingRaw(session = session)
   empty <- data.frame(
-    label = character(0), n = integer(0), total_time = numeric(0),
+    label = character(0), type = character(0), n = integer(0), total_time = numeric(0),
     mean_time = numeric(0), last_time = numeric(0), stringsAsFactors = FALSE
   )
   if (nrow(raw) == 0) {
@@ -147,6 +153,7 @@ GetSafeShinyTiming <- function(session = shiny::getDefaultReactiveDomain()) {
     sub <- raw[raw$label == l, , drop = FALSE]
     data.frame(
       label = l,
+      type = sub$type[1],
       n = nrow(sub),
       total_time = sum(sub$elapsed),
       mean_time = mean(sub$elapsed),
@@ -167,7 +174,7 @@ GetSafeShinyTiming <- function(session = shiny::getDefaultReactiveDomain()) {
 #' @inheritParams GetSafeShinyTiming
 #' @return a data.frame with columns \code{label}, \code{elapsed}, \code{status}, \code{timestamp}
 #'   (the end time), \code{start}, \code{id}, \code{parent} (the \code{id} of the enclosing tracked
-#'   call, \code{NA} at top level) and \code{depth} (one row per tracked call, in the order they
+#'   call, \code{NA} at top level), \code{depth} and \code{type} (one row per tracked call, in the order they
 #'   finished). Zero rows if nothing has been
 #'   tracked yet.
 #'
@@ -184,7 +191,8 @@ GetSafeShinyTimingRaw <- function(session = shiny::getDefaultReactiveDomain()) {
     return(data.frame(
       label = character(0), elapsed = numeric(0), status = character(0),
       timestamp = as.POSIXct(character(0)), start = as.POSIXct(character(0)),
-      id = integer(0), parent = integer(0), depth = integer(0), stringsAsFactors = FALSE
+      id = integer(0), parent = integer(0), depth = integer(0), type = character(0),
+      stringsAsFactors = FALSE
     ))
   }
   data.frame(
@@ -196,6 +204,7 @@ GetSafeShinyTimingRaw <- function(session = shiny::getDefaultReactiveDomain()) {
     id = vapply(recs, function(r) r$id, integer(1)),
     parent = vapply(recs, function(r) r$parent, integer(1)),
     depth = vapply(recs, function(r) r$depth, integer(1)),
+    type = vapply(recs, function(r) if (is.null(r$type)) NA_character_ else r$type, character(1)),
     stringsAsFactors = FALSE
   )
 }
@@ -298,4 +307,21 @@ ResetSafeShinyTiming <- function(session = shiny::getDefaultReactiveDomain()) {
   txt <- paste(deparse(expr), collapse = " ")
   txt <- trimws(gsub("\\s+", " ", txt))
   substr(txt, 1, 40)
+}
+
+#' Kind of tracked call for a wrapper context
+#'
+#' @param context character string, e.g. \code{"SafeObserve"} or \code{"SafeRenderPlot"}.
+#' @return one of \code{"observe"}, \code{"react"}, \code{"render"}, \code{"download"}.
+#' @keywords internal
+.safeShinyTypeFromContext <- function(context) {
+  if (startsWith(context, "SafeObserve")) {
+    "observe"
+  } else if (identical(context, "SafeReactive")) {
+    "react"
+  } else if (identical(context, "SafeDownloadHandler")) {
+    "download"
+  } else {
+    "render"
+  }
 }

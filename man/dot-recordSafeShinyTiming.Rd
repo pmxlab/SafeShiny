@@ -12,7 +12,8 @@
   start = NULL,
   id = NA_integer_,
   parent = NA_integer_,
-  depth = 0L
+  depth = 0L,
+  type = NA_character_
 )
 }
 \arguments{
@@ -33,6 +34,9 @@
 \item{parent}{integer id of the enclosing tracked call, or \code{NA} for a top-level call.}
 
 \item{depth}{integer nesting depth (0 for a top-level call).}
+
+\item{type}{character string, the kind of tracked call: \code{"observe"}, \code{"react"},
+\code{"render"}, \code{"download"}, or \code{NA}.}
 }
 \value{
 nothing - side effect only.

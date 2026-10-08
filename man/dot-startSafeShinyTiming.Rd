@@ -4,12 +4,14 @@
 \alias{.startSafeShinyTiming}
 \title{Start timing a tracked call and push it onto the session's call stack}
 \usage{
-.startSafeShinyTiming(domain, label)
+.startSafeShinyTiming(domain, label, type = NA_character_)
 }
 \arguments{
 \item{domain}{a Shiny reactive domain (session object), or \code{NULL}.}
 
 \item{label}{character string identifying the call site.}
+
+\item{type}{character string, see \code{.recordSafeShinyTiming}.}
 }
 \value{
 an opaque token (a list) to be passed to \code{.endSafeShinyTiming()}.

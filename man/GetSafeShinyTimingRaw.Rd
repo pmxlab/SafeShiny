@@ -14,7 +14,7 @@ a running session) to read the fallback \code{"global"} store used when no sessi
 \value{
 a data.frame with columns \code{label}, \code{elapsed}, \code{status}, \code{timestamp}
 (the end time), \code{start}, \code{id}, \code{parent} (the \code{id} of the enclosing tracked
-call, \code{NA} at top level) and \code{depth} (one row per tracked call, in the order they
+call, \code{NA} at top level), \code{depth} and \code{type} (one row per tracked call, in the order they
 finished). Zero rows if nothing has been
 tracked yet.
 }

@@ -49,7 +49,7 @@
     if (!isTRUE(trackTime)) {
       return(NULL)
     }
-    .startSafeShinyTiming(domain = domain, label = label)
+    .startSafeShinyTiming(domain = domain, label = label, type = .safeShinyTypeFromContext(context))
   }
 
   recordFn <- function(status, startTime) {
