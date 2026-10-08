@@ -173,3 +173,29 @@ test_that("console output with invalid UTF-8 is sanitised and a huge log is read
   expect_match(tail[length(tail)], "line number 200")
   expect_true(all(grepl("^line number", tail)))  # the cut first line is dropped
 })
+
+test_that("trim ignores tiny calls (e.g. tab-shown observers) when finding the window edges", {
+  s <- list(token = paste0("trim2-", as.numeric(Sys.time())))
+  rec <- function(label, sleep) {
+    tok <- SafeShiny:::.startSafeShinyTiming(s, label, "observe")
+    Sys.sleep(sleep)
+    SafeShiny:::.endSafeShinyTiming(s, tok, "ok")
+  }
+  rec("tab shown (before)", 0)
+  Sys.sleep(0.4)
+  rec("real work", 0.1)
+  Sys.sleep(0.4)
+  rec("tab shown (after)", 0)
+
+  full <- SummarizeSafeShinyTiming(s, trim = TRUE, trimMinTime = 0)
+  trimmed <- SummarizeSafeShinyTiming(s, trim = TRUE)
+  expect_gt(full$wall_clock_elapsed, 0.85)
+  expect_equal(trimmed$wall_clock_elapsed, 0.1, tolerance = 0.5)
+  expect_lt(trimmed$untracked_time, 0.05)
+
+  xmax <- function(w) as.numeric(sub('.*"xmax":([0-9.]+).*', "\\1", as.character(w)))
+  expect_lt(xmax(PlotSafeShinyFlameHTML(s, trim = TRUE)), 0.3)
+  expect_gt(xmax(PlotSafeShinyFlameHTML(s, trim = TRUE, trimMinTime = 0)), 0.85)
+  expect_false(grepl("tab shown", as.character(PlotSafeShinyFlameHTML(s, trim = TRUE)), fixed = TRUE))
+  ResetSafeShinyTiming(s)
+})
