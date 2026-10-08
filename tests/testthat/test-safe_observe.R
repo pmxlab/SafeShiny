@@ -212,3 +212,46 @@ test_that("SafeObserveEvent: req() in the event expression is still a silent sto
     expect_equal(session$getRuns(), 1)
   })
 })
+
+test_that("SafeObserveEvent tracks event evaluation as '<label> (event)', nesting reactives, only when interesting", {
+  shiny::testServer(function(input, output, session) {
+    ResetSafeShinyTiming(session = session)
+    ev <- SafeReactive({ Sys.sleep(0.02); input$go }, label = "ev", trackTime = TRUE)
+    SafeObserveEvent(ev(), { Sys.sleep(0.01) }, label = "obs", trackTime = TRUE, ignoreInit = TRUE)
+    SafeObserveEvent(input$plain, { Sys.sleep(0.01) }, label = "plainobs", trackTime = TRUE,
+                     ignoreInit = TRUE)
+    boom <- SafeReactive({ if (isTRUE(input$explode)) stop("bad event"); input$go2 },
+                         label = "boom", trackTime = TRUE)
+    SafeObserveEvent(boom(), { }, label = "failobs", trackTime = TRUE, quiet = TRUE,
+                     ignoreInit = TRUE)
+  }, expr = {
+    settle(session)
+    ResetSafeShinyTiming(session = session)  # drop the initial evaluation
+    trigger(session, go = 1)
+    raw <- GetSafeShinyTimingRaw(session)
+    evRow <- raw[raw$label == "obs (event)", ]
+    expect_equal(nrow(evRow), 1)
+    expect_equal(evRow$depth, 0)
+    expect_equal(raw$parent[raw$label == "ev"], evRow$id)          # reactive nested under the event
+    expect_equal(raw$depth[raw$label == "ev"], 1)
+    expect_equal(raw$depth[raw$label == "obs"], 0)                  # handler is a sibling
+    expect_gte(evRow$elapsed, 0.02)
+
+    ResetSafeShinyTiming(session = session)
+    trigger(session, plain = 1)                                      # trivial event: no "(event)" row
+    raw <- GetSafeShinyTimingRaw(session)
+    expect_true("plainobs" %in% raw$label)
+    expect_false("plainobs (event)" %in% raw$label)
+
+    ResetSafeShinyTiming(session = session)
+    trigger(session, explode = TRUE, go2 = 1)                        # failing event
+    raw <- GetSafeShinyTimingRaw(session)
+    failRow <- raw[raw$label == "failobs (event)", ]
+    expect_equal(failRow$status, "error")
+    expect_false("failobs" %in% raw$label)                           # handler never ran
+    # call stack is clean afterwards: a new top-level call has depth 0
+    trigger(session, plain = 2)
+    raw <- GetSafeShinyTimingRaw(session)
+    expect_equal(tail(raw$depth[raw$label == "plainobs"], 1), 0)
+  })
+})

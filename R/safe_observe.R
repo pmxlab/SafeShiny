@@ -186,6 +186,12 @@ SafeObserve <- function(x, onError = NULL, trackTime = NA, label = NULL, quiet =
 #' \code{onError}) and the observer then stops quietly, without running \code{handlerExpr}. The
 #' value of \code{eventExpr} is passed through unchanged, so trigger detection is not affected.
 #'
+#' When time is tracked, the handler is recorded under \code{label}; the evaluation of
+#' \code{eventExpr} is recorded as a separate call \code{"<label> (event)"}, so that tracked
+#' reactives evaluated as part of the event appear nested under it. It is recorded only when it ran
+#' another tracked call, took at least 1 ms, or ended in an error or a \code{req()} silent stop -
+#' plain \code{input$x} events leave no entry.
+#'
 #' @inheritParams SafeObserve
 #' @param eventExpr the expression to watch for changes, exactly as for
 #'   \code{shiny::observeEvent()}.
@@ -253,15 +259,27 @@ SafeObserveEvent <- function(eventExpr, handlerExpr, onError = NULL, trackTime =
   # Shiny close the whole session. A genuine error is reported exactly like a handler error; the
   # observer then stops quietly (req(FALSE)) without running the handler. req()/validate() silent
   # stops raised by the event expression are re-raised unchanged by errorHandler().
-  wrappedEventExpr <- bquote(
+  # Its time is tracked as a separate call "<label> (event)" so that reactives evaluated as part of
+  # the event nest under it; trivial events are not recorded (see .safeShinyEndOrDiscardTiming()).
+  eventHandlers <- .safeShinyBuildHandlers(
+    label = paste0(label, " (event)"), domain = domain, onError = onError, trackTime = trackTime,
+    quiet = quiet, context = "SafeObserveEvent"
+  )
+  endEventFn <- function(token) .safeShinyEndOrDiscardTiming(domain, token)
+  wrappedEventExpr <- bquote({
+    .safeShiny_event_start <- .(eventHandlers$startFn)()
     tryCatch(
-      .(eventExpr),
+      {
+        .safeShiny_event_value <- .(eventExpr)
+        .(endEventFn)(.safeShiny_event_start)
+        .safeShiny_event_value
+      },
       error = function(.safeShiny_e) {
-        .(handlers$errorHandler)(.safeShiny_e, NULL)
+        .(eventHandlers$errorHandler)(.safeShiny_e, .safeShiny_event_start)
         shiny::req(FALSE)
       }
     )
-  )
+  })
 
   shiny::observeEvent(
     wrappedEventExpr, wrappedHandlerExpr,

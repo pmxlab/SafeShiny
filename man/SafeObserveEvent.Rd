@@ -70,6 +70,12 @@ being watched) are protected. An error raised while evaluating \code{eventExpr} 
 close the whole session; here it is reported like a handler error (message, error log,
 \code{onError}) and the observer then stops quietly, without running \code{handlerExpr}. The
 value of \code{eventExpr} is passed through unchanged, so trigger detection is not affected.
+
+When time is tracked, the handler is recorded under \code{label}; the evaluation of
+\code{eventExpr} is recorded as a separate call \code{"<label> (event)"}, so that tracked
+reactives evaluated as part of the event appear nested under it. It is recorded only when it ran
+another tracked call, took at least 1 ms, or ended in an error or a \code{req()} silent stop -
+plain \code{input$x} events leave no entry.
 }
 \examples{
 \dontrun{

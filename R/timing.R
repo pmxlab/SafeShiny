@@ -131,6 +131,32 @@
   )
 }
 
+#' Finish a timing token, or discard it if it turned out to be uninteresting
+#'
+#' Used for the event-expression phase of \code{SafeObserveEvent()}: the call is recorded only if it
+#' ran at least one other tracked call (those are then drawn nested under it), took at least
+#' \code{minElapsed} seconds, or ended with a non-"ok" status; otherwise it is just popped off the
+#' call stack, so trivial \code{input$x} events do not clutter the timing.
+#'
+#' @param domain a Shiny reactive domain (session object), or \code{NULL}.
+#' @param token the token returned by \code{.startSafeShinyTiming()}, or \code{NULL} (a no-op).
+#' @param minElapsed numeric, seconds.
+#' @return nothing - side effect only.
+#' @keywords internal
+.safeShinyEndOrDiscardTiming <- function(domain, token, minElapsed = 0.001) {
+  if (!is.list(token)) return(invisible(NULL))
+  store <- .safeShinyEnv$stores[[.safeShinySessionKey(domain)]]
+  elapsed <- as.numeric(difftime(Sys.time(), token$start, units = "secs"))
+  hadChildren <- !is.null(store) && store$nextId > token$id + 1L
+  if (hadChildren || elapsed >= minElapsed) {
+    .endSafeShinyTiming(domain, token, "ok")
+  } else if (!is.null(store)) {
+    pos <- match(token$id, store$stack)
+    if (!is.na(pos)) store$stack <- store$stack[seq_len(pos - 1L)]
+  }
+  invisible(NULL)
+}
+
 #' Get tracked execution-time records for a Shiny session
 #'
 #' Returns a per-label summary of every \code{\link{SafeObserve}}/\code{\link{SafeObserveEvent}}
