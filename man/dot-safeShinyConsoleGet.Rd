@@ -4,18 +4,26 @@
 \alias{.safeShinyConsoleGet}
 \title{Get the captured console output of a session}
 \usage{
-.safeShinyConsoleGet(session = shiny::getDefaultReactiveDomain(), max = 5000L)
+.safeShinyConsoleGet(
+  session = shiny::getDefaultReactiveDomain(),
+  max = 5000L,
+  maxBytes = 2e+06
+)
 }
 \arguments{
 \item{session}{a Shiny session, or \code{NULL}.}
 
 \item{max}{integer, keep only the last \code{max} lines.}
+
+\item{maxBytes}{numeric, read at most this many trailing bytes (default 2 MB).}
 }
 \value{
 a character vector of lines since the capture started or the last
 \code{.safeShinyConsoleClear()}; empty if not capturing.
 }
 \description{
-Get the captured console output of a session
+Reads from the byte offset of the last clear, and at most the last \code{maxBytes} bytes, so a
+huge log is never read in full. Bytes that are not valid UTF-8 are replaced by their
+\code{<xx>} hex escape, because invalid strings cannot be sent to the browser.
 }
 \keyword{internal}

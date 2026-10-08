@@ -157,3 +157,19 @@ test_that("tab height: percentages are viewport shares, numbers are pixels, junk
   expect_match(as.character(SafeShinyTabUI("x", height = "45%")), "max-height: 45vh", fixed = TRUE)
   expect_match(as.character(SafeShinyTabPanel("x", height = 300)), "max-height: 300px", fixed = TRUE)
 })
+
+test_that("console output with invalid UTF-8 is sanitised and a huge log is read from the tail", {
+  s <- list(token = paste0("con2-", as.numeric(Sys.time())))
+  SafeShiny:::.safeShinyConsoleStart(s)
+  on.exit(SafeShiny:::.safeShinyConsoleStop(s), add = TRUE)
+  cat(rawToChar(as.raw(c(0x61, 0xff, 0x62))), "\n")
+  lines <- SafeShiny:::.safeShinyConsoleGet(s)
+  expect_true(all(validUTF8(lines)))
+  expect_match(lines[1], "a<ff>b", fixed = TRUE)
+  SafeShiny:::.safeShinyConsoleClear(s)
+  for (i in 1:200) cat("line number", i, "\n")
+  tail <- SafeShiny:::.safeShinyConsoleGet(s, maxBytes = 200)
+  expect_lt(length(tail), 20)
+  expect_match(tail[length(tail)], "line number 200")
+  expect_true(all(grepl("^line number", tail)))  # the cut first line is dropped
+})

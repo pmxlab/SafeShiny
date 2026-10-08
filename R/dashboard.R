@@ -275,19 +275,24 @@ SafeShinyTabServer <- function(id) {
 
     # Console capture (opt-in, process-wide; see console.R)
     consoleTick <- shiny::reactiveVal(0)
-    shiny::observeEvent(input$consoleOn, {
+    # fail soft: an error here must not take the whole session down
+    consoleDo <- function(f) {
+      tryCatch(f(), error = function(e) {
+        shiny::showNotification(paste("Console capture:", conditionMessage(e)), type = "error")
+      })
+      consoleTick(consoleTick() + 1)
+    }
+    shiny::observeEvent(input$consoleOn, consoleDo(function() {
       if (isTRUE(input$consoleOn)) .safeShinyConsoleStart(session) else .safeShinyConsoleStop(session)
-      consoleTick(consoleTick() + 1)
-    }, ignoreInit = TRUE)
-    shiny::observeEvent(input$consoleRefresh, consoleTick(consoleTick() + 1))
-    shiny::observeEvent(input$consoleClear, {
-      .safeShinyConsoleClear(session)
-      consoleTick(consoleTick() + 1)
-    })
+    }), ignoreInit = TRUE)
+    shiny::observeEvent(input$consoleRefresh, consoleDo(function() NULL))
+    shiny::observeEvent(input$consoleClear, consoleDo(function() .safeShinyConsoleClear(session)))
     output$console <- shiny::renderText({
       if (isTRUE(input$consoleAuto)) shiny::invalidateLater(2000, session)
       consoleTick()
-      lines <- .safeShinyConsoleGet(session)
+      lines <- tryCatch(.safeShinyConsoleGet(session), error = function(e) {
+        paste("Could not read the console log:", conditionMessage(e))
+      })
       if (!isTRUE(input$consoleOn)) {
         "Console capture is off. Tick the box above to start capturing."
       } else if (length(lines) == 0) {
@@ -298,7 +303,9 @@ SafeShinyTabServer <- function(id) {
     })
     output$dlConsole <- shiny::downloadHandler(
       filename = function() "safeshiny_console.txt",
-      content = function(file) writeLines(.safeShinyConsoleGet(session, max = Inf), file)
+      content = function(file) {
+        writeLines(.safeShinyConsoleGet(session, max = Inf, maxBytes = Inf), file, useBytes = TRUE)
+      }
     )
   })
 }
