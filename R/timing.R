@@ -46,12 +46,15 @@
   if (is.null(start)) {
     start <- now - elapsed
   }
-  n <- length(.safeShinyEnv$stores[[key]]$records)
-  .safeShinyEnv$stores[[key]]$records[[n + 1]] <- list(
+  st <- .safeShinyEnv$stores[[key]]
+  n <- st$n + 1L
+  st$n <- n
+  # one binding per record in a hashed environment: O(1) append, no copying of earlier records
+  assign(as.character(n), list(
     label = label, elapsed = elapsed, status = status, timestamp = now,
     start = start, id = as.integer(id), parent = as.integer(parent), depth = as.integer(depth),
     type = as.character(type)
-  )
+  ), envir = st$records)
   invisible(NULL)
 }
 
@@ -61,8 +64,14 @@
 #' @keywords internal
 .safeShinyEnsureStore <- function(key) {
   if (is.null(.safeShinyEnv$stores[[key]])) {
-    .safeShinyEnv$stores[[key]] <- list(records = list(), firstTime = Sys.time(),
-                                        stack = integer(0), nextId = 1L)
+    # Environments (not lists) so appending a record never copies the earlier ones.
+    st <- new.env(parent = emptyenv())
+    st$records <- new.env(hash = TRUE, parent = emptyenv())
+    st$n <- 0L
+    st$firstTime <- Sys.time()
+    st$stack <- integer(0)
+    st$nextId <- 1L
+    .safeShinyEnv$stores[[key]] <- st
   }
   invisible(NULL)
 }
@@ -86,8 +95,8 @@
   id <- store$nextId
   parent <- if (length(store$stack)) store$stack[length(store$stack)] else NA_integer_
   depth <- length(store$stack)
-  .safeShinyEnv$stores[[key]]$nextId <- id + 1L
-  .safeShinyEnv$stores[[key]]$stack <- c(store$stack, id)
+  store$nextId <- id + 1L
+  store$stack <- c(store$stack, id)
   list(start = Sys.time(), id = id, parent = parent, depth = depth, label = label, type = type)
 }
 
@@ -107,7 +116,7 @@
   if (!is.null(store)) {
     pos <- match(token$id, store$stack)
     if (!is.na(pos)) {
-      .safeShinyEnv$stores[[key]]$stack <- store$stack[seq_len(pos - 1L)]
+      store$stack <- store$stack[seq_len(pos - 1L)]
     }
   }
   elapsed <- as.numeric(difftime(Sys.time(), token$start, units = "secs"))
@@ -190,7 +199,8 @@ GetSafeShinyTiming <- function(session = shiny::getDefaultReactiveDomain()) {
 #' @export
 GetSafeShinyTimingRaw <- function(session = shiny::getDefaultReactiveDomain()) {
   key <- .safeShinySessionKey(session)
-  recs <- .safeShinyEnv$stores[[key]]$records
+  st <- .safeShinyEnv$stores[[key]]
+  recs <- if (is.null(st)) NULL else unname(mget(as.character(seq_len(st$n)), envir = st$records))
   if (is.null(recs) || length(recs) == 0) {
     return(data.frame(
       label = character(0), elapsed = numeric(0), status = character(0),
