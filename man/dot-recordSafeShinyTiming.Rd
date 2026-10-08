@@ -4,7 +4,16 @@
 \alias{.recordSafeShinyTiming}
 \title{Record one timed execution}
 \usage{
-.recordSafeShinyTiming(domain, label, elapsed, status)
+.recordSafeShinyTiming(
+  domain,
+  label,
+  elapsed,
+  status,
+  start = NULL,
+  id = NA_integer_,
+  parent = NA_integer_,
+  depth = 0L
+)
 }
 \arguments{
 \item{domain}{a Shiny reactive domain (session object), or \code{NULL}.}
@@ -15,6 +24,15 @@
 
 \item{status}{character string, one of \code{"ok"}, \code{"silent"} (a \code{shiny::req()}/
 \code{validate()} silent stop), or \code{"error"}.}
+
+\item{start}{\code{POSIXct} start time of the call. Defaults to the end time minus
+\code{elapsed}.}
+
+\item{id}{integer id of the call, unique within the session store, or \code{NA}.}
+
+\item{parent}{integer id of the enclosing tracked call, or \code{NA} for a top-level call.}
+
+\item{depth}{integer nesting depth (0 for a top-level call).}
 }
 \value{
 nothing - side effect only.

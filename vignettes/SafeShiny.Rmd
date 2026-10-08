@@ -144,6 +144,12 @@ than the aggregated-by-label view `GetSafeShinyTiming()` returns. Call `ResetSaf
 clear a session's recorded timings (e.g. between two different scenarios you want to compare
 independently).
 
+`PlotSafeShinyFlame()` draws the same records as a nested flame chart (time on the x-axis, nesting
+depth on the y-axis): a tracked call evaluated synchronously inside another one - for instance a
+`SafeReactive()` read from a `SafeObserve()` - is drawn directly above its parent. Nesting is
+inferred from a per-session stack of running tracked calls, so it is only reliable for
+synchronous code (`promises`/`future` intervals interleave).
+
 ## SafeRender() / SafeRenderPlot() / SafeRenderUI() / SafeRenderTable() / SafeDownloadHandler()
 
 These are a **different shape of wrapper** from `SafeObserve()`/`SafeObserveEvent()`, and it's
