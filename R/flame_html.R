@@ -11,6 +11,11 @@
 #'
 #' @inheritParams PlotSafeShinyFlame
 #' @param height numeric, height of one depth row in pixels (default \code{22}).
+#' @param trim logical, default \code{TRUE}: the time axis runs from the start of the first tracked
+#'   call to the end of the last one. \code{FALSE}: it covers the whole tracking window, from
+#'   \code{\link{StartSafeShinyTracking}} to \code{\link{StopSafeShinyTracking}} (or to now), so idle
+#'   time before and after the activity is shown (and counted as untracked). Without a recorded
+#'   window (tracking not started with these functions) it is the same as \code{TRUE}.
 #'
 #' @return an \code{htmltools} browsable tag, or \code{NULL} (invisibly, with a message) if nothing
 #'   has been tracked yet.
@@ -28,16 +33,24 @@
 #' @importFrom htmltools tags HTML tagList browsable
 #' @importFrom jsonlite toJSON
 #' @export
-PlotSafeShinyFlameHTML <- function(session = shiny::getDefaultReactiveDomain(), height = 22) {
+PlotSafeShinyFlameHTML <- function(session = shiny::getDefaultReactiveDomain(), height = 22,
+                                 trim = TRUE) {
   raw <- GetSafeShinyTimingRaw(session = session)
   if (nrow(raw) == 0) {
     message("[SafeShiny] No tracked calls to plot.")
     return(invisible(NULL))
   }
   raw <- raw[order(raw$start), , drop = FALSE]
-  t0 <- as.numeric(difftime(raw$start, min(raw$start), units = "secs"))
+  origin <- min(raw$start)
+  end <- max(raw$start + raw$elapsed)
+  win <- .safeShinyEnv$windows[[.safeShinySessionKey(session)]]
+  if (!isTRUE(trim) && !is.null(win)) {
+    origin <- min(origin, win$start)
+    end <- max(end, if (is.null(win$stop)) Sys.time() else win$stop)
+  }
+  t0 <- as.numeric(difftime(raw$start, origin, units = "secs"))
   top <- raw$depth == 0
-  xmax <- max(t0 + raw$elapsed)
+  xmax <- as.numeric(difftime(end, origin, units = "secs"))
   untracked <- max(xmax - sum(raw$elapsed[top]), 0)
 
   dat <- data.frame(

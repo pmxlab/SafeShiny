@@ -4,12 +4,22 @@
 \alias{SummarizeSafeShinyTiming}
 \title{Summarize tracked execution time vs. wall-clock elapsed time for a Shiny session}
 \usage{
-SummarizeSafeShinyTiming(session = shiny::getDefaultReactiveDomain())
+SummarizeSafeShinyTiming(
+  session = shiny::getDefaultReactiveDomain(),
+  trim = FALSE
+)
 }
 \arguments{
 \item{session}{a Shiny reactive domain (session object). Defaults to
 \code{shiny::getDefaultReactiveDomain()}; pass \code{NULL} explicitly (or call from outside
 a running session) to read the fallback \code{"global"} store used when no session exists.}
+
+\item{trim}{logical, default \code{FALSE}. Which time window is the "wall clock"?
+\code{TRUE}: from the start of the first tracked call to the end of the last one, so idle time
+before and after the activity is ignored. \code{FALSE}: the whole tracking window, i.e. from
+\code{\link{StartSafeShinyTracking}} to \code{\link{StopSafeShinyTracking}} (or to now while
+tracking is still on); if tracking was not switched on with these functions (e.g. via the
+\code{SafeShiny.trackTime} option), from the first tracked call to now.}
 }
 \value{
 an object of class \code{"SafeShinyTimingSummary"} (a list with elements

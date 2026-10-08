@@ -55,12 +55,16 @@ SafeShinyTabRequested <- function(x, param = "safeshinytab") {
 #' class(ui)
 #'
 #' @importFrom shiny NS tagList uiOutput tabsetPanel tabPanel downloadButton actionButton
-#' @importFrom shiny verbatimTextOutput tableOutput h4 div p
+#' @importFrom shiny verbatimTextOutput tableOutput h4 div p checkboxInput
 #' @export
 SafeShinyTabUI <- function(id) {
   ns <- shiny::NS(id)
   tableOut <- function(outId) {
     if (requireNamespace("DT", quietly = TRUE)) DT::DTOutput(ns(outId)) else shiny::tableOutput(ns(outId))
+  }
+  # each sub-tab scrolls on its own, so wide/long tables never run off the window
+  scroll <- function(...) {
+    shiny::div(style = "margin-top: 10px; max-height: calc(100vh - 230px); overflow: auto;", ...)
   }
   shiny::tagList(
     shiny::div(
@@ -74,24 +78,40 @@ SafeShinyTabUI <- function(id) {
       shiny::tabsetPanel(
         shiny::tabPanel(
           "Flame chart",
-          shiny::div(style = "margin-top: 10px;",
-                     shiny::uiOutput(ns("flame")),
-                     shiny::div(style = "margin-top: 8px;",
-                                shiny::downloadButton(ns("dlFlame"), "Flame chart (HTML)"),
-                                shiny::downloadButton(ns("dlRaw"), "Raw timing (CSV)")))
+          scroll(
+            shiny::checkboxInput(
+              ns("trim"), "Trim idle time before the first and after the last tracked call",
+              value = TRUE),
+            shiny::uiOutput(ns("flame")),
+            shiny::div(style = "margin-top: 8px;",
+                       shiny::downloadButton(ns("dlFlame"), "Flame chart (HTML)"),
+                       shiny::downloadButton(ns("dlRaw"), "Raw timing (CSV)")))
         ),
         shiny::tabPanel(
           "Timing summary",
-          shiny::div(style = "margin-top: 10px;",
-                     shiny::verbatimTextOutput(ns("summary")),
-                     tableOut("timing"))
+          scroll(shiny::verbatimTextOutput(ns("summary")), tableOut("timing"))
         ),
         shiny::tabPanel(
           "Error log",
-          shiny::div(style = "margin-top: 10px;",
-                     shiny::actionButton(ns("refreshErrors"), "Refresh"),
-                     shiny::actionButton(ns("clearErrors"), "Clear"),
-                     shiny::div(style = "margin-top: 8px;", tableOut("errors")))
+          scroll(shiny::actionButton(ns("refreshErrors"), "Refresh"),
+                 shiny::actionButton(ns("clearErrors"), "Clear"),
+                 shiny::div(style = "margin-top: 8px;", tableOut("errors")))
+        ),
+        shiny::tabPanel(
+          "Console",
+          shiny::div(
+            style = "margin-top: 10px;",
+            shiny::checkboxInput(
+              ns("consoleOn"), paste0("Capture console output (stdout and stderr). Process-wide: shows ",
+                                      "all sessions; messages/warnings are not echoed to the server ",
+                                      "log while capturing."), value = FALSE),
+            shiny::actionButton(ns("consoleRefresh"), "Refresh"),
+            shiny::actionButton(ns("consoleClear"), "Clear"),
+            shiny::downloadButton(ns("dlConsole"), "Download (.txt)"),
+            shiny::checkboxInput(ns("consoleAuto"), "Auto-refresh every 2 s", value = FALSE),
+            shiny::div(style = "max-height: calc(100vh - 380px); overflow: auto;",
+                       shiny::verbatimTextOutput(ns("console")))
+          )
         )
       )
     )
@@ -134,7 +154,6 @@ SafeShinyTabServer <- function(id) {
       rv$tracking <- FALSE
       rv$stopped <- TRUE
       rv$snap <- list(
-        summary = SummarizeSafeShinyTiming(session = session),
         timing = GetSafeShinyTiming(session = session),
         raw = GetSafeShinyTimingRaw(session = session)
       )
@@ -181,25 +200,34 @@ SafeShinyTabServer <- function(id) {
       if (!isTRUE(rv$stopped)) {
         return(shiny::p("No tracking run yet."))
       }
-      w <- PlotSafeShinyFlameHTML(session = session)
+      w <- PlotSafeShinyFlameHTML(session = session, trim = isTRUE(input$trim))
       if (is.null(w)) shiny::p("No tracked calls were recorded.") else w
     })
 
     output$summary <- shiny::renderPrint({
-      shiny::req(rv$snap)
-      print(rv$snap$summary)
+      rv$version
+      if (is.null(rv$snap)) {
+        cat("No finished tracking run.\n")
+      } else {
+        print(SummarizeSafeShinyTiming(session = session, trim = isTRUE(input$trim)))
+      }
     })
 
     renderTbl <- function(expr) {
+      # capture the expression and evaluate it afresh inside the render function; passing `expr`
+      # on as a promise would force it once and freeze the table at its first value
+      q <- substitute(expr)
+      env <- parent.frame()
+      fn <- function() eval(q, env)
       if (requireNamespace("DT", quietly = TRUE)) {
-        DT::renderDT(expr, rownames = FALSE, options = list(pageLength = 15, scrollX = TRUE))
+        DT::renderDT(fn(), rownames = FALSE, options = list(pageLength = 15, scrollX = TRUE))
       } else {
-        shiny::renderTable(expr, striped = TRUE, digits = 4)
+        shiny::renderTable(fn(), striped = TRUE, digits = 4)
       }
     }
     output$timing <- renderTbl({
-      shiny::req(rv$snap)
-      t <- rv$snap$timing
+      # an empty table (not req()) so the previous run's rows are really replaced
+      t <- if (is.null(rv$snap)) GetSafeShinyTiming(session = NULL)[0, ] else rv$snap$timing
       num <- vapply(t, is.numeric, logical(1))
       t[num] <- lapply(t[num], signif, 4)
       t
@@ -215,7 +243,7 @@ SafeShinyTabServer <- function(id) {
     output$dlFlame <- shiny::downloadHandler(
       filename = function() "safeshiny_flame.html",
       content = function(file) {
-        w <- PlotSafeShinyFlameHTML(session = session)
+        w <- PlotSafeShinyFlameHTML(session = session, trim = isTRUE(input$trim))
         shiny::req(w)
         htmltools::save_html(w, file)
       }
@@ -225,6 +253,34 @@ SafeShinyTabServer <- function(id) {
       content = function(file) {
         utils::write.csv(GetSafeShinyTimingRaw(session = session), file, row.names = FALSE)
       }
+    )
+
+    # Console capture (opt-in, process-wide; see console.R)
+    consoleTick <- shiny::reactiveVal(0)
+    shiny::observeEvent(input$consoleOn, {
+      if (isTRUE(input$consoleOn)) .safeShinyConsoleStart(session) else .safeShinyConsoleStop(session)
+      consoleTick(consoleTick() + 1)
+    }, ignoreInit = TRUE)
+    shiny::observeEvent(input$consoleRefresh, consoleTick(consoleTick() + 1))
+    shiny::observeEvent(input$consoleClear, {
+      .safeShinyConsoleClear(session)
+      consoleTick(consoleTick() + 1)
+    })
+    output$console <- shiny::renderText({
+      if (isTRUE(input$consoleAuto)) shiny::invalidateLater(2000, session)
+      consoleTick()
+      lines <- .safeShinyConsoleGet(session)
+      if (!isTRUE(input$consoleOn)) {
+        "Console capture is off. Tick the box above to start capturing."
+      } else if (length(lines) == 0) {
+        "(no output yet)"
+      } else {
+        paste(lines, collapse = "\n")
+      }
+    })
+    output$dlConsole <- shiny::downloadHandler(
+      filename = function() "safeshiny_console.txt",
+      content = function(file) writeLines(.safeShinyConsoleGet(session, max = Inf), file)
     )
   })
 }

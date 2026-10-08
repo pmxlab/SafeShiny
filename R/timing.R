@@ -4,6 +4,10 @@
 .safeShinyEnv$errors <- list()
 .safeShinyEnv$tracking <- list()
 .safeShinyEnv$cleanup <- list()
+.safeShinyEnv$windows <- list()
+.safeShinyEnv$console <- new.env(parent = emptyenv())  # see console.R
+.safeShinyEnv$console$sessions <- character(0)
+.safeShinyEnv$console$offsets <- list()
 
 #' Resolve the storage key for a Shiny session/domain
 #'
@@ -237,6 +241,12 @@ GetSafeShinyTimingRaw <- function(session = shiny::getDefaultReactiveDomain()) {
 #' nesting. Per-label times in \code{timing} remain inclusive of nested children.
 #'
 #' @inheritParams GetSafeShinyTiming
+#' @param trim logical, default \code{FALSE}. Which time window is the "wall clock"?
+#'   \code{TRUE}: from the start of the first tracked call to the end of the last one, so idle time
+#'   before and after the activity is ignored. \code{FALSE}: the whole tracking window, i.e. from
+#'   \code{\link{StartSafeShinyTracking}} to \code{\link{StopSafeShinyTracking}} (or to now while
+#'   tracking is still on); if tracking was not switched on with these functions (e.g. via the
+#'   \code{SafeShiny.trackTime} option), from the first tracked call to now.
 #' @return an object of class \code{"SafeShinyTimingSummary"} (a list with elements
 #'   \code{total_tracked_time}, \code{wall_clock_elapsed}, \code{untracked_time}, \code{n_labels}
 #'   and \code{timing}, the same data.frame \code{\link{GetSafeShinyTiming}} returns) with a
@@ -250,15 +260,20 @@ GetSafeShinyTimingRaw <- function(session = shiny::getDefaultReactiveDomain()) {
 #' print(SummarizeSafeShinyTiming(session = NULL))
 #'
 #' @export
-SummarizeSafeShinyTiming <- function(session = shiny::getDefaultReactiveDomain()) {
+SummarizeSafeShinyTiming <- function(session = shiny::getDefaultReactiveDomain(), trim = FALSE) {
   key <- .safeShinySessionKey(session)
   store <- .safeShinyEnv$stores[[key]]
   timing <- GetSafeShinyTiming(session = session)
 
   raw <- GetSafeShinyTimingRaw(session = session)
   total_tracked <- sum(raw$elapsed[raw$depth == 0])
-  wall_clock <- if (!is.null(store) && !is.null(store$firstTime)) {
-    as.numeric(difftime(Sys.time(), store$firstTime, units = "secs"))
+  wall_clock <- if (nrow(raw) > 0 && isTRUE(trim)) {
+    as.numeric(difftime(max(raw$start + raw$elapsed), min(raw$start), units = "secs"))
+  } else if (!is.null(store) && !is.null(store$firstTime)) {
+    win <- .safeShinyEnv$windows[[key]]
+    from <- if (!is.null(win)) win$start else store$firstTime
+    to <- if (!is.null(win) && !is.null(win$stop)) win$stop else Sys.time()
+    as.numeric(difftime(to, from, units = "secs"))
   } else {
     NA_real_
   }
@@ -287,7 +302,7 @@ print.SafeShinyTimingSummary <- function(x, ...) {
   cat("SafeShiny timing summary\n")
   cat("  Tracked user-code time: ", round(x$total_tracked_time, 3), "s across ", x$n_labels,
       " label(s)\n", sep = "")
-  cat("  Wall-clock elapsed since first tracked call: ", round(x$wall_clock_elapsed, 3), "s\n",
+  cat("  Wall-clock elapsed: ", round(x$wall_clock_elapsed, 3), "s\n",
       sep = "")
   cat("  Approx. untracked time (Shiny overhead + anything not wrapped): ",
       round(x$untracked_time, 3), "s\n", sep = "")
@@ -309,6 +324,7 @@ print.SafeShinyTimingSummary <- function(x, ...) {
 ResetSafeShinyTiming <- function(session = shiny::getDefaultReactiveDomain()) {
   key <- .safeShinySessionKey(session)
   .safeShinyEnv$stores[[key]] <- NULL
+  .safeShinyEnv$windows[[key]] <- NULL
   invisible(NULL)
 }
 
@@ -381,6 +397,7 @@ StartSafeShinyTracking <- function(session = shiny::getDefaultReactiveDomain(), 
     ResetSafeShinyTiming(session = session)
   }
   .safeShinyEnv$tracking[[key]] <- TRUE
+  .safeShinyEnv$windows[[key]] <- list(start = Sys.time(), stop = NULL)
   .safeShinyRegisterCleanup(session)
   invisible(NULL)
 }
@@ -388,7 +405,13 @@ StartSafeShinyTracking <- function(session = shiny::getDefaultReactiveDomain(), 
 #' @rdname StartSafeShinyTracking
 #' @export
 StopSafeShinyTracking <- function(session = shiny::getDefaultReactiveDomain()) {
-  .safeShinyEnv$tracking[[.safeShinySessionKey(session)]] <- FALSE
+  key <- .safeShinySessionKey(session)
+  .safeShinyEnv$tracking[[key]] <- FALSE
+  win <- .safeShinyEnv$windows[[key]]
+  if (!is.null(win) && is.null(win$stop)) {
+    win$stop <- Sys.time()
+    .safeShinyEnv$windows[[key]] <- win
+  }
   invisible(NULL)
 }
 
@@ -438,6 +461,8 @@ IsSafeShinyTrackingDisabled <- function() {
     .safeShinyEnv$stores[[key]] <- NULL
     .safeShinyEnv$errors[[key]] <- NULL
     .safeShinyEnv$tracking[[key]] <- NULL
+    .safeShinyEnv$windows[[key]] <- NULL
+    .safeShinyConsoleRemove(key)
     .safeShinyEnv$cleanup[[key]] <- NULL
   })
   invisible(NULL)
