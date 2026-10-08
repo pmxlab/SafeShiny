@@ -75,19 +75,34 @@
 
 #' Get the captured console output of a session
 #'
+#' Reads from the byte offset of the last clear, and at most the last \code{maxBytes} bytes, so a
+#' huge log is never read in full. Bytes that are not valid UTF-8 are replaced by their
+#' \code{<xx>} hex escape, because invalid strings cannot be sent to the browser.
+#'
 #' @inheritParams .safeShinyConsoleStart
 #' @param max integer, keep only the last \code{max} lines.
+#' @param maxBytes numeric, read at most this many trailing bytes (default 2 MB).
 #' @return a character vector of lines since the capture started or the last
 #'   \code{.safeShinyConsoleClear()}; empty if not capturing.
 #' @keywords internal
-.safeShinyConsoleGet <- function(session = shiny::getDefaultReactiveDomain(), max = 5000L) {
+.safeShinyConsoleGet <- function(session = shiny::getDefaultReactiveDomain(), max = 5000L,
+                                 maxBytes = 2e6) {
   e <- .safeShinyEnv$console
   key <- .safeShinySessionKey(session)
   if (is.null(e$con) || !(key %in% e$sessions)) return(character(0))
   try(flush(e$con), silent = TRUE)
-  lines <- readLines(e$path, warn = FALSE)
   off <- e$offsets[[key]]
-  if (!is.null(off) && off > 0) lines <- lines[-seq_len(min(off, length(lines)))]
+  if (is.null(off)) off <- 0
+  size <- file.size(e$path)
+  if (is.na(size) || size <= off) return(character(0))
+  start <- max(off, size - maxBytes)
+  rc <- file(e$path, open = "rb")
+  on.exit(close(rc), add = TRUE)
+  if (start > 0) seek(rc, start)
+  lines <- readLines(rc, warn = FALSE)
+  if (start > off && length(lines) > 0) lines <- lines[-1]  # first line is cut mid-way
+  lines <- iconv(lines, from = "UTF-8", to = "UTF-8", sub = "byte")
+  lines[is.na(lines)] <- ""
   if (length(lines) > max) lines <- lines[(length(lines) - max + 1):length(lines)]
   lines
 }
@@ -104,6 +119,6 @@
   key <- .safeShinySessionKey(session)
   if (is.null(e$con) || !(key %in% e$sessions)) return(invisible(NULL))
   try(flush(e$con), silent = TRUE)
-  e$offsets[[key]] <- length(readLines(e$path, warn = FALSE))
+  e$offsets[[key]] <- file.size(e$path)
   invisible(NULL)
 }
