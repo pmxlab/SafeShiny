@@ -100,7 +100,8 @@
 #'   error is caught (not called for a \code{shiny::req()}/\code{validate()} silent stop). Use
 #'   for application-specific handling, e.g. recording the failure against a specific piece of
 #'   application state, or showing a \code{shiny::showNotification()}.
-#' @param trackTime logical, default \code{FALSE}. When \code{TRUE}, the wall-clock time spent
+#' @param trackTime logical, default \code{getOption("SafeShiny.trackTime", FALSE)} (i.e. \code{FALSE}
+#'   unless that option is set - see \code{\link{GetSafeShinyTiming}}). When \code{TRUE}, the wall-clock time spent
 #'   evaluating \code{x} is recorded (whether it finishes normally, is caught by \code{onError},
 #'   or hits a \code{req()}/\code{validate()} silent stop - all three consume real time) - see
 #'   \code{\link{GetSafeShinyTiming}}/\code{\link{SummarizeSafeShinyTiming}}.
@@ -128,7 +129,7 @@
 #'
 #' @importFrom shiny observe getDefaultReactiveDomain
 #' @export
-SafeObserve <- function(x, onError = NULL, trackTime = FALSE, label = NULL, quiet = FALSE,
+SafeObserve <- function(x, onError = NULL, trackTime = getOption("SafeShiny.trackTime", FALSE), label = NULL, quiet = FALSE,
                          env = parent.frame(), quoted = FALSE, ...,
                          suspended = FALSE, priority = 0,
                          domain = shiny::getDefaultReactiveDomain(), autoDestroy = TRUE) {
@@ -199,7 +200,7 @@ SafeObserve <- function(x, onError = NULL, trackTime = FALSE, label = NULL, quie
 #'
 #' @importFrom shiny observeEvent getDefaultReactiveDomain
 #' @export
-SafeObserveEvent <- function(eventExpr, handlerExpr, onError = NULL, trackTime = FALSE,
+SafeObserveEvent <- function(eventExpr, handlerExpr, onError = NULL, trackTime = getOption("SafeShiny.trackTime", FALSE),
                               label = NULL, quiet = FALSE,
                               event.env = parent.frame(), event.quoted = FALSE,
                               handler.env = parent.frame(), handler.quoted = FALSE, ...,

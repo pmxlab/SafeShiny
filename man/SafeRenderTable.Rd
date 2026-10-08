@@ -7,7 +7,7 @@
 SafeRenderTable(
   expr,
   onError = NULL,
-  trackTime = FALSE,
+  trackTime = getOption("SafeShiny.trackTime", FALSE),
   label = NULL,
   quiet = FALSE,
   env = parent.frame(),
@@ -21,7 +21,8 @@ SafeRenderTable(
 \item{onError}{optional function called with the caught condition object whenever a genuine
 error is caught (not called for a \code{shiny::req()}/\code{validate()} silent stop).}
 
-\item{trackTime}{logical, default \code{FALSE}. When \code{TRUE}, the wall-clock time spent
+\item{trackTime}{logical, default \code{getOption("SafeShiny.trackTime", FALSE)} (i.e. \code{FALSE}
+unless that option is set - see \code{\link{GetSafeShinyTiming}}). When \code{TRUE}, the wall-clock time spent
 evaluating \code{expr} is recorded - see \code{\link{GetSafeShinyTiming}}/
 \code{\link{SummarizeSafeShinyTiming}}.}
 
