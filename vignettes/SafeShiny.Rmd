@@ -239,12 +239,13 @@ output$report <- SafeDownloadHandler(
 ## Roadmap
 
 Implemented: `SafeObserve()`/`SafeObserveEvent()` (swallowing - the only place nothing else would
-contain the error) and `SafeRender()`/`SafeRenderPlot()`/`SafeRenderUI()`/`SafeRenderTable()`/
-`SafeDownloadHandler()` (observability-only - Shiny already contains these on its own).
+contain the error), `SafeRender()`/`SafeRenderPlot()`/`SafeRenderUI()`/`SafeRenderTable()`/
+`SafeDownloadHandler()` (observability-only - Shiny already contains these on its own), and
+`SafeReactive()` (observability-only as well).
 
-Not implemented: a standalone `SafeReactive()` for a plain `reactive()` that's consumed by
-*another reactive* rather than directly by an output or one of the five wrappers above. Per the
-mechanism explained in this vignette, a reactive consumed only by a render output is already safe
-without any wrapping - but a reactive consumed by another reactive, several layers deep, with no
-output or observer at the end of that particular chain, hasn't been separately verified yet.
-Pending further validation of exactly where (if anywhere) that case still needs its own wrapper.
+`SafeReactive()` wraps `shiny::reactive()`. It is *not* about crash prevention - Shiny already
+contains a failing reactive consumed by an output. It catches the error, calls `onError()`, and
+re-raises it unchanged, so the app can roll a computation failure into its own status
+bookkeeping; and with `trackTime = TRUE` it covers the computation layer, where most real compute
+time lives. Reactive caching is unchanged: a cached error is re-raised without recomputing and
+without firing `onError()` again.
