@@ -1,6 +1,9 @@
 #' @keywords internal
 .safeShinyEnv <- new.env(parent = emptyenv())
 .safeShinyEnv$stores <- list()
+.safeShinyEnv$errors <- list()
+.safeShinyEnv$tracking <- list()
+.safeShinyEnv$cleanup <- list()
 
 #' Resolve the storage key for a Shiny session/domain
 #'
@@ -43,12 +46,15 @@
   if (is.null(start)) {
     start <- now - elapsed
   }
-  n <- length(.safeShinyEnv$stores[[key]]$records)
-  .safeShinyEnv$stores[[key]]$records[[n + 1]] <- list(
+  st <- .safeShinyEnv$stores[[key]]
+  n <- st$n + 1L
+  st$n <- n
+  # one binding per record in a hashed environment: O(1) append, no copying of earlier records
+  assign(as.character(n), list(
     label = label, elapsed = elapsed, status = status, timestamp = now,
     start = start, id = as.integer(id), parent = as.integer(parent), depth = as.integer(depth),
     type = as.character(type)
-  )
+  ), envir = st$records)
   invisible(NULL)
 }
 
@@ -58,8 +64,14 @@
 #' @keywords internal
 .safeShinyEnsureStore <- function(key) {
   if (is.null(.safeShinyEnv$stores[[key]])) {
-    .safeShinyEnv$stores[[key]] <- list(records = list(), firstTime = Sys.time(),
-                                        stack = integer(0), nextId = 1L)
+    # Environments (not lists) so appending a record never copies the earlier ones.
+    st <- new.env(parent = emptyenv())
+    st$records <- new.env(hash = TRUE, parent = emptyenv())
+    st$n <- 0L
+    st$firstTime <- Sys.time()
+    st$stack <- integer(0)
+    st$nextId <- 1L
+    .safeShinyEnv$stores[[key]] <- st
   }
   invisible(NULL)
 }
@@ -78,12 +90,13 @@
 .startSafeShinyTiming <- function(domain, label, type = NA_character_) {
   key <- .safeShinySessionKey(domain)
   .safeShinyEnsureStore(key)
+  .safeShinyRegisterCleanup(domain)
   store <- .safeShinyEnv$stores[[key]]
   id <- store$nextId
   parent <- if (length(store$stack)) store$stack[length(store$stack)] else NA_integer_
   depth <- length(store$stack)
-  .safeShinyEnv$stores[[key]]$nextId <- id + 1L
-  .safeShinyEnv$stores[[key]]$stack <- c(store$stack, id)
+  store$nextId <- id + 1L
+  store$stack <- c(store$stack, id)
   list(start = Sys.time(), id = id, parent = parent, depth = depth, label = label, type = type)
 }
 
@@ -103,7 +116,7 @@
   if (!is.null(store)) {
     pos <- match(token$id, store$stack)
     if (!is.na(pos)) {
-      .safeShinyEnv$stores[[key]]$stack <- store$stack[seq_len(pos - 1L)]
+      store$stack <- store$stack[seq_len(pos - 1L)]
     }
   }
   elapsed <- as.numeric(difftime(Sys.time(), token$start, units = "secs"))
@@ -186,7 +199,8 @@ GetSafeShinyTiming <- function(session = shiny::getDefaultReactiveDomain()) {
 #' @export
 GetSafeShinyTimingRaw <- function(session = shiny::getDefaultReactiveDomain()) {
   key <- .safeShinySessionKey(session)
-  recs <- .safeShinyEnv$stores[[key]]$records
+  st <- .safeShinyEnv$stores[[key]]
+  recs <- if (is.null(st)) NULL else unname(mget(as.character(seq_len(st$n)), envir = st$records))
   if (is.null(recs) || length(recs) == 0) {
     return(data.frame(
       label = character(0), elapsed = numeric(0), status = character(0),
@@ -324,4 +338,167 @@ ResetSafeShinyTiming <- function(session = shiny::getDefaultReactiveDomain()) {
   } else {
     "render"
   }
+}
+
+#' Should a call be timed right now?
+#'
+#' @param trackTime \code{TRUE}, \code{FALSE} or \code{NA}/\code{NULL} (auto).
+#' @param domain a Shiny reactive domain (session object), or \code{NULL}.
+#' @return logical scalar. Auto means: the \code{SafeShiny.trackTime} option is \code{TRUE}, or
+#'   tracking was started for this session with \code{\link{StartSafeShinyTracking}}.
+#' @keywords internal
+.safeShinyShouldTrack <- function(trackTime, domain) {
+  if (IsSafeShinyTrackingDisabled()) return(FALSE)
+  if (isTRUE(trackTime)) return(TRUE)
+  if (isFALSE(trackTime)) return(FALSE)
+  isTRUE(getOption("SafeShiny.trackTime", FALSE)) || IsSafeShinyTracking(domain)
+}
+
+#' Start timing every tracked call in a session
+#'
+#' Switches execution-time tracking on for one Shiny session, at run time: every \code{Safe*}
+#' call that doesn't force \code{trackTime} on or off is timed from now on, including calls
+#' created by other packages (e.g. MMVshiny-generated observers/reactives). Because the switch is
+#' per session, other users of the same R process are not affected.
+#'
+#' @inheritParams GetSafeShinyTiming
+#' @param reset logical, default \code{TRUE}: discard previously recorded timings first.
+#' @return \code{NULL}, invisibly.
+#'
+#' @examples
+#' StartSafeShinyTracking(session = NULL)
+#' IsSafeShinyTracking(session = NULL)
+#' StopSafeShinyTracking(session = NULL)
+#'
+#' @export
+StartSafeShinyTracking <- function(session = shiny::getDefaultReactiveDomain(), reset = TRUE) {
+  if (IsSafeShinyTrackingDisabled()) {
+    message("[SafeShiny] Tracking is disabled by options(SafeShiny.trackTime = FALSE); not started.")
+    return(invisible(NULL))
+  }
+  key <- .safeShinySessionKey(session)
+  if (isTRUE(reset)) {
+    ResetSafeShinyTiming(session = session)
+  }
+  .safeShinyEnv$tracking[[key]] <- TRUE
+  .safeShinyRegisterCleanup(session)
+  invisible(NULL)
+}
+
+#' @rdname StartSafeShinyTracking
+#' @export
+StopSafeShinyTracking <- function(session = shiny::getDefaultReactiveDomain()) {
+  .safeShinyEnv$tracking[[.safeShinySessionKey(session)]] <- FALSE
+  invisible(NULL)
+}
+
+#' @rdname StartSafeShinyTracking
+#' @return \code{IsSafeShinyTracking()} returns a logical scalar.
+#' @export
+IsSafeShinyTracking <- function(session = shiny::getDefaultReactiveDomain()) {
+  isTRUE(.safeShinyEnv$tracking[[.safeShinySessionKey(session)]])
+}
+
+#' Is execution-time tracking disabled globally?
+#'
+#' \code{options(SafeShiny.trackTime = FALSE)} is a master kill switch, e.g. for production: wrappers
+#' created while it is set take the cheapest possible path for every call (the decision is made once,
+#' at creation), \code{\link{StartSafeShinyTracking}} does nothing, and not even an explicit
+#' \code{trackTime = TRUE} (or the monitoring tab) can switch tracking on. When the option is unset,
+#' tracking is "auto" (switchable per session at run time); when \code{TRUE}, always on.
+#'
+#' @return a logical scalar, \code{TRUE} if the option is exactly \code{FALSE}.
+#'
+#' @examples
+#' IsSafeShinyTrackingDisabled()
+#'
+#' @export
+IsSafeShinyTrackingDisabled <- function() {
+  isFALSE(getOption("SafeShiny.trackTime"))
+}
+
+#' Free a session's timing/error/tracking state when the session ends
+#'
+#' Registers (once per session) an \code{onSessionEnded} callback; a no-op for \code{NULL} or for
+#' objects without \code{onSessionEnded}.
+#'
+#' @param domain a Shiny reactive domain (session object), or \code{NULL}.
+#' @return nothing - side effect only.
+#' @keywords internal
+.safeShinyRegisterCleanup <- function(domain) {
+  if (is.null(domain) || is.null(domain$token) || !is.function(domain$onSessionEnded)) {
+    return(invisible(NULL))
+  }
+  key <- .safeShinySessionKey(domain)
+  if (isTRUE(.safeShinyEnv$cleanup[[key]])) {
+    return(invisible(NULL))
+  }
+  .safeShinyEnv$cleanup[[key]] <- TRUE
+  domain$onSessionEnded(function() {
+    .safeShinyEnv$stores[[key]] <- NULL
+    .safeShinyEnv$errors[[key]] <- NULL
+    .safeShinyEnv$tracking[[key]] <- NULL
+    .safeShinyEnv$cleanup[[key]] <- NULL
+  })
+  invisible(NULL)
+}
+
+#' Record a caught (non-silent) error
+#'
+#' Keeps the most recent 500 per session.
+#'
+#' @param domain a Shiny reactive domain (session object), or \code{NULL}.
+#' @param label character string identifying the call site.
+#' @param type character string, the kind of call (see \code{.recordSafeShinyTiming}).
+#' @param e the caught condition.
+#' @return nothing - side effect only.
+#' @keywords internal
+.recordSafeShinyError <- function(domain, label, type, e) {
+  key <- .safeShinySessionKey(domain)
+  call <- conditionCall(e)
+  rec <- list(time = Sys.time(), label = label, type = type, message = conditionMessage(e),
+              call = if (is.null(call)) NA_character_ else paste(deparse(call), collapse = " "))
+  errs <- c(.safeShinyEnv$errors[[key]], list(rec))
+  if (length(errs) > 500) errs <- errs[(length(errs) - 499):length(errs)]
+  .safeShinyEnv$errors[[key]] <- errs
+  .safeShinyRegisterCleanup(domain)
+  invisible(NULL)
+}
+
+#' Get the errors caught by the Safe* wrappers in a Shiny session
+#'
+#' Every genuine error caught by a \code{Safe*} wrapper (not \code{shiny::req()}/\code{validate()}
+#' silent stops) is recorded, whether or not timing is tracked; the most recent 500 per session are
+#' kept.
+#'
+#' @inheritParams GetSafeShinyTiming
+#' @return a data.frame with columns \code{time}, \code{label}, \code{type}, \code{message}
+#'   and \code{call}, oldest first. Zero rows if no error was caught.
+#'
+#' @examples
+#' ResetSafeShinyErrors(session = NULL)
+#' GetSafeShinyErrors(session = NULL)
+#'
+#' @export
+GetSafeShinyErrors <- function(session = shiny::getDefaultReactiveDomain()) {
+  errs <- .safeShinyEnv$errors[[.safeShinySessionKey(session)]]
+  if (length(errs) == 0) {
+    return(data.frame(time = as.POSIXct(character(0)), label = character(0), type = character(0),
+                      message = character(0), call = character(0), stringsAsFactors = FALSE))
+  }
+  data.frame(
+    time = do.call(c, lapply(errs, function(r) r$time)),
+    label = vapply(errs, function(r) r$label, character(1)),
+    type = vapply(errs, function(r) r$type, character(1)),
+    message = vapply(errs, function(r) r$message, character(1)),
+    call = vapply(errs, function(r) r$call, character(1)),
+    stringsAsFactors = FALSE
+  )
+}
+
+#' @rdname GetSafeShinyErrors
+#' @export
+ResetSafeShinyErrors <- function(session = shiny::getDefaultReactiveDomain()) {
+  .safeShinyEnv$errors[[.safeShinySessionKey(session)]] <- NULL
+  invisible(NULL)
 }

@@ -42,7 +42,7 @@
 #'
 #' @importFrom shiny reactive getDefaultReactiveDomain
 #' @export
-SafeReactive <- function(expr, onError = NULL, trackTime = getOption("SafeShiny.trackTime", FALSE), label = NULL, quiet = FALSE,
+SafeReactive <- function(expr, onError = NULL, trackTime = NA, label = NULL, quiet = FALSE,
                           env = parent.frame(), quoted = FALSE,
                           domain = shiny::getDefaultReactiveDomain()) {
   if (!quoted) {

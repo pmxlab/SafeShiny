@@ -22,8 +22,8 @@ messages.}
 
 \item{onError}{optional function called with the caught condition.}
 
-\item{trackTime}{logical, whether to record execution time via
-\code{\link{.recordSafeShinyTiming}}.}
+\item{trackTime}{\code{TRUE}, \code{FALSE} or \code{NA} (auto, see \code{\link{SafeObserve}}):
+whether to record execution time via \code{\link{.recordSafeShinyTiming}}.}
 
 \item{quiet}{logical, whether to suppress the default \code{message()} logged when an error
 is caught (the error is still caught either way - this only controls the console/log line).}

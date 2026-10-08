@@ -9,8 +9,8 @@
 #'   messages.
 #' @param domain a Shiny reactive domain (session object), or \code{NULL}.
 #' @param onError optional function called with the caught condition.
-#' @param trackTime logical, whether to record execution time via
-#'   \code{\link{.recordSafeShinyTiming}}.
+#' @param trackTime \code{TRUE}, \code{FALSE} or \code{NA} (auto, see \code{\link{SafeObserve}}):
+#'   whether to record execution time via \code{\link{.recordSafeShinyTiming}}.
 #' @param quiet logical, whether to suppress the default \code{message()} logged when an error
 #'   is caught (the error is still caught either way - this only controls the console/log line).
 #' @param context character string, used in the default logged message (e.g. \code{"SafeObserve"}).
@@ -45,15 +45,20 @@
 #' same level to catch it.
 #' @keywords internal
 .safeShinyBuildHandlers <- function(label, domain, onError, trackTime, quiet, context, reraise = FALSE) {
+  type <- .safeShinyTypeFromContext(context)
+  # options(SafeShiny.trackTime = FALSE) is a master kill switch, resolved once here so every
+  # call of this wrapper takes the cheapest possible path.
+  staticallyOff <- IsSafeShinyTrackingDisabled()
+
   startFn <- function() {
-    if (!isTRUE(trackTime)) {
+    if (staticallyOff || !.safeShinyShouldTrack(trackTime, domain)) {
       return(NULL)
     }
-    .startSafeShinyTiming(domain = domain, label = label, type = .safeShinyTypeFromContext(context))
+    .startSafeShinyTiming(domain = domain, label = label, type = type)
   }
 
   recordFn <- function(status, startTime) {
-    if (!isTRUE(trackTime) || is.null(startTime)) {
+    if (!is.list(startTime)) {
       return(invisible(NULL))
     }
     .endSafeShinyTiming(domain = domain, token = startTime, status = status)
@@ -66,6 +71,7 @@
     }
 
     recordFn("error", startTime)
+    .recordSafeShinyError(domain = domain, label = label, type = type, e = e)
     if (!isTRUE(quiet)) {
       message("[SafeShiny] ", context, " (", label, ") caught an error: ", conditionMessage(e))
     }
@@ -100,8 +106,11 @@
 #'   error is caught (not called for a \code{shiny::req()}/\code{validate()} silent stop). Use
 #'   for application-specific handling, e.g. recording the failure against a specific piece of
 #'   application state, or showing a \code{shiny::showNotification()}.
-#' @param trackTime logical, default \code{getOption("SafeShiny.trackTime", FALSE)} (i.e. \code{FALSE}
-#'   unless that option is set - see \code{\link{GetSafeShinyTiming}}). When \code{TRUE}, the wall-clock time spent
+#' @param trackTime logical, default \code{NA} ("auto"): the call is timed only while tracking is
+#'   switched on, i.e. when \code{options(SafeShiny.trackTime = TRUE)} is set or the session's
+#'   tracking was started with \code{\link{StartSafeShinyTracking}} - decided each time the call runs.
+#'   \code{TRUE}/\code{FALSE} force tracking on/off, except that \code{options(SafeShiny.trackTime = FALSE)}
+#'   is a master switch that disables tracking everywhere (see \code{\link{IsSafeShinyTrackingDisabled}}). When tracked, the wall-clock time spent
 #'   evaluating \code{x} is recorded (whether it finishes normally, is caught by \code{onError},
 #'   or hits a \code{req()}/\code{validate()} silent stop - all three consume real time) - see
 #'   \code{\link{GetSafeShinyTiming}}/\code{\link{SummarizeSafeShinyTiming}}.
@@ -129,7 +138,7 @@
 #'
 #' @importFrom shiny observe getDefaultReactiveDomain
 #' @export
-SafeObserve <- function(x, onError = NULL, trackTime = getOption("SafeShiny.trackTime", FALSE), label = NULL, quiet = FALSE,
+SafeObserve <- function(x, onError = NULL, trackTime = NA, label = NULL, quiet = FALSE,
                          env = parent.frame(), quoted = FALSE, ...,
                          suspended = FALSE, priority = 0,
                          domain = shiny::getDefaultReactiveDomain(), autoDestroy = TRUE) {
@@ -200,7 +209,7 @@ SafeObserve <- function(x, onError = NULL, trackTime = getOption("SafeShiny.trac
 #'
 #' @importFrom shiny observeEvent getDefaultReactiveDomain
 #' @export
-SafeObserveEvent <- function(eventExpr, handlerExpr, onError = NULL, trackTime = getOption("SafeShiny.trackTime", FALSE),
+SafeObserveEvent <- function(eventExpr, handlerExpr, onError = NULL, trackTime = NA,
                               label = NULL, quiet = FALSE,
                               event.env = parent.frame(), event.quoted = FALSE,
                               handler.env = parent.frame(), handler.quoted = FALSE, ...,

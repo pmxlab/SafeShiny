@@ -97,8 +97,11 @@
 #' @param expr the render body, exactly as for \code{renderFunc} itself.
 #' @param onError optional function called with the caught condition object whenever a genuine
 #'   error is caught (not called for a \code{shiny::req()}/\code{validate()} silent stop).
-#' @param trackTime logical, default \code{getOption("SafeShiny.trackTime", FALSE)} (i.e. \code{FALSE}
-#'   unless that option is set - see \code{\link{GetSafeShinyTiming}}). When \code{TRUE}, the wall-clock time spent
+#' @param trackTime logical, default \code{NA} ("auto"): the call is timed only while tracking is
+#'   switched on, i.e. when \code{options(SafeShiny.trackTime = TRUE)} is set or the session's
+#'   tracking was started with \code{\link{StartSafeShinyTracking}} - decided each time the call runs.
+#'   \code{TRUE}/\code{FALSE} force tracking on/off, except that \code{options(SafeShiny.trackTime = FALSE)}
+#'   is a master switch that disables tracking everywhere (see \code{\link{IsSafeShinyTrackingDisabled}}). When tracked, the wall-clock time spent
 #'   evaluating \code{expr} is recorded - see \code{\link{GetSafeShinyTiming}}/
 #'   \code{\link{SummarizeSafeShinyTiming}}.
 #' @param label optional character string identifying this render for timing/error-logging
@@ -124,7 +127,7 @@
 #'
 #' @importFrom shiny getDefaultReactiveDomain
 #' @export
-SafeRender <- function(renderFunc, expr, onError = NULL, trackTime = getOption("SafeShiny.trackTime", FALSE), label = NULL,
+SafeRender <- function(renderFunc, expr, onError = NULL, trackTime = NA, label = NULL,
                         quiet = FALSE, env = parent.frame(), quoted = FALSE, ...) {
   # Captured first, and used directly (not forwarded through another "..." layer) - match.call()
   # only reliably recovers "..."'s original expressions one hop away from where they were
@@ -167,7 +170,7 @@ SafeRender <- function(renderFunc, expr, onError = NULL, trackTime = getOption("
 #'
 #' @importFrom shiny renderPlot
 #' @export
-SafeRenderPlot <- function(expr, onError = NULL, trackTime = getOption("SafeShiny.trackTime", FALSE), label = NULL, quiet = FALSE,
+SafeRenderPlot <- function(expr, onError = NULL, trackTime = NA, label = NULL, quiet = FALSE,
                             env = parent.frame(), quoted = FALSE, ...) {
   dotsCall <- match.call(expand.dots = FALSE)
   if (!quoted) {
@@ -204,7 +207,7 @@ SafeRenderPlot <- function(expr, onError = NULL, trackTime = getOption("SafeShin
 #'
 #' @importFrom shiny renderUI
 #' @export
-SafeRenderUI <- function(expr, onError = NULL, trackTime = getOption("SafeShiny.trackTime", FALSE), label = NULL, quiet = FALSE,
+SafeRenderUI <- function(expr, onError = NULL, trackTime = NA, label = NULL, quiet = FALSE,
                           env = parent.frame(), quoted = FALSE, ...) {
   dotsCall <- match.call(expand.dots = FALSE)
   if (!quoted) {
@@ -253,7 +256,7 @@ SafeRenderUI <- function(expr, onError = NULL, trackTime = getOption("SafeShiny.
 #' }
 #'
 #' @export
-SafeRenderTable <- function(expr, onError = NULL, trackTime = getOption("SafeShiny.trackTime", FALSE), label = NULL, quiet = FALSE,
+SafeRenderTable <- function(expr, onError = NULL, trackTime = NA, label = NULL, quiet = FALSE,
                              env = parent.frame(), quoted = FALSE, ...) {
   dotsCall <- match.call(expand.dots = FALSE)
   if (!quoted) {
@@ -292,8 +295,11 @@ SafeRenderTable <- function(expr, onError = NULL, trackTime = getOption("SafeShi
 #'   path to write to).
 #' @param onError optional function called with the caught condition object whenever a genuine
 #'   error is caught (not called for a \code{shiny::req()}/\code{validate()} silent stop).
-#' @param trackTime logical, default \code{getOption("SafeShiny.trackTime", FALSE)} (i.e. \code{FALSE}
-#'   unless that option is set - see \code{\link{GetSafeShinyTiming}}). When \code{TRUE}, the wall-clock time spent
+#' @param trackTime logical, default \code{NA} ("auto"): the call is timed only while tracking is
+#'   switched on, i.e. when \code{options(SafeShiny.trackTime = TRUE)} is set or the session's
+#'   tracking was started with \code{\link{StartSafeShinyTracking}} - decided each time the call runs.
+#'   \code{TRUE}/\code{FALSE} force tracking on/off, except that \code{options(SafeShiny.trackTime = FALSE)}
+#'   is a master switch that disables tracking everywhere (see \code{\link{IsSafeShinyTrackingDisabled}}). When tracked, the wall-clock time spent
 #'   running \code{content} is recorded - see \code{\link{GetSafeShinyTiming}}/
 #'   \code{\link{SummarizeSafeShinyTiming}}.
 #' @param label optional character string identifying this download for timing/error-logging
@@ -322,7 +328,7 @@ SafeRenderTable <- function(expr, onError = NULL, trackTime = getOption("SafeShi
 #'
 #' @importFrom shiny downloadHandler getDefaultReactiveDomain
 #' @export
-SafeDownloadHandler <- function(filename, content, onError = NULL, trackTime = getOption("SafeShiny.trackTime", FALSE),
+SafeDownloadHandler <- function(filename, content, onError = NULL, trackTime = NA,
                                  label = NULL, quiet = FALSE, contentType = NA,
                                  outputArgs = list()) {
   if (is.null(label)) {

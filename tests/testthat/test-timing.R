@@ -250,3 +250,21 @@ test_that("PlotSafeShinyFlameHTML builds a self-contained widget with the call d
   # the data can never close the <script> element early
   expect_equal(lengths(regmatches(html, gregexpr("</script>", html, fixed = TRUE))), 1)
 })
+
+test_that("recording cost does not grow with the number of records", {
+  fake <- list(token = paste0("perf-", as.numeric(Sys.time())))
+  ResetSafeShinyTiming(session = fake)
+  per_call <- function(n) {
+    t <- system.time(for (i in seq_len(n)) {
+      tk <- SafeShiny:::.startSafeShinyTiming(fake, "x", "observe")
+      SafeShiny:::.endSafeShinyTiming(fake, tk, "ok")
+    })[["elapsed"]]
+    t / n
+  }
+  early <- per_call(2000)
+  for (i in 1:3) per_call(5000)   # grow the store to ~17000 records
+  late <- per_call(2000)
+  expect_equal(nrow(GetSafeShinyTimingRaw(session = fake)), 2000 + 15000 + 2000)
+  # was ~3-6x slower (quadratic) before; allow generous slack for noisy CI machines
+  expect_lt(late, 3 * early + 2e-4)
+})
