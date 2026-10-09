@@ -89,8 +89,8 @@ SafeShinyTabUI <- function(id, height = "60%") {
               ns("trim"), "Trim idle time before the first and after the last tracked call",
               value = TRUE),
             shiny::numericInput(
-              ns("trimMinTime"), "Ignore calls shorter than this (s) when finding the trim edges",
-              value = 0, min = 0, step = 0.01, width = "420px"),
+              ns("trimMinTime"), "Trim window starts at the first and ends at the last call lasting at least (s); shorter calls outside it are dropped",
+              value = 0, min = 0, step = 0.01, width = "560px"),
             shiny::uiOutput(ns("flame")),
             shiny::div(style = "margin-top: 8px;",
                        shiny::downloadButton(ns("dlFlame"), "Flame chart (HTML)"),
