@@ -88,6 +88,9 @@ SafeShinyTabUI <- function(id, height = "60%") {
             shiny::checkboxInput(
               ns("trim"), "Trim idle time before the first and after the last tracked call",
               value = TRUE),
+            shiny::numericInput(
+              ns("trimMinTime"), "Trim window starts at the first and ends at the last call lasting at least (s); shorter calls outside it are dropped",
+              value = 0, min = 0, step = 0.01, width = "560px"),
             shiny::uiOutput(ns("flame")),
             shiny::div(style = "margin-top: 8px;",
                        shiny::downloadButton(ns("dlFlame"), "Flame chart (HTML)"),
@@ -210,6 +213,12 @@ SafeShinyTabServer <- function(id) {
       }
     })
 
+    # trim edges: NA / negative / non-numeric input counts as 0 (every call counts)
+    trimMin <- shiny::reactive({
+      m <- suppressWarnings(as.numeric(input$trimMinTime))
+      if (length(m) != 1 || is.na(m) || m < 0) 0 else m
+    })
+
     output$flame <- shiny::renderUI({
       rv$version
       if (isTRUE(rv$tracking)) {
@@ -218,7 +227,7 @@ SafeShinyTabServer <- function(id) {
       if (!isTRUE(rv$stopped)) {
         return(shiny::p("No tracking run yet."))
       }
-      w <- PlotSafeShinyFlameHTML(session = session, trim = isTRUE(input$trim))
+      w <- PlotSafeShinyFlameHTML(session = session, trim = isTRUE(input$trim), trimMinTime = trimMin())
       if (is.null(w)) shiny::p("No tracked calls were recorded.") else w
     })
 
@@ -227,7 +236,7 @@ SafeShinyTabServer <- function(id) {
       if (is.null(rv$snap)) {
         cat("No finished tracking run.\n")
       } else {
-        print(SummarizeSafeShinyTiming(session = session, trim = isTRUE(input$trim)))
+        print(SummarizeSafeShinyTiming(session = session, trim = isTRUE(input$trim), trimMinTime = trimMin()))
       }
     })
 
@@ -261,7 +270,7 @@ SafeShinyTabServer <- function(id) {
     output$dlFlame <- shiny::downloadHandler(
       filename = function() "safeshiny_flame.html",
       content = function(file) {
-        w <- PlotSafeShinyFlameHTML(session = session, trim = isTRUE(input$trim))
+        w <- PlotSafeShinyFlameHTML(session = session, trim = isTRUE(input$trim), trimMinTime = trimMin())
         shiny::req(w)
         htmltools::save_html(w, file)
       }

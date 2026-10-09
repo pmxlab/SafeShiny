@@ -75,6 +75,33 @@ test_that("SafeShinyTabUI/Panel build, and the module server starts and stops tr
   })
 })
 
+test_that("the trimMinTime input drives the module's trimmed views; bad values count as 0", {
+  shiny::testServer(SafeShinyTabServer, {
+    ResetSafeShinyTiming(session = session)
+    session$setInputs(start = 1)
+    rec <- function(label, sleep) {
+      tok <- SafeShiny:::.startSafeShinyTiming(session, label, "observe")
+      Sys.sleep(sleep)
+      SafeShiny:::.endSafeShinyTiming(session, tok, "ok")
+    }
+    rec("tab shown (before)", 0)
+    Sys.sleep(0.4)
+    rec("real work", 0.1)
+    Sys.sleep(0.4)
+    rec("tab shown (after)", 0)
+    session$setInputs(stop = 1, trim = TRUE, trimMinTime = 0)
+    wall <- function() as.numeric(sub(".*Wall-clock elapsed: ([0-9.]+)s.*", "\\1",
+                                      paste(output$summary, collapse = " ")))
+    expect_gt(wall(), 0.85)
+    session$setInputs(trimMinTime = 0.01)
+    expect_lt(wall(), 0.3)
+    for (bad in list(NA, -1, "x")) {
+      session$setInputs(trimMinTime = bad)
+      expect_gt(wall(), 0.85)
+    }
+  })
+})
+
 test_that("options(SafeShiny.trackTime = FALSE) is a master kill switch", {
   old <- options(SafeShiny.trackTime = FALSE)
   on.exit(options(old), add = TRUE)
