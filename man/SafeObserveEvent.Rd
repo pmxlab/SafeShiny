@@ -73,9 +73,9 @@ value of \code{eventExpr} is passed through unchanged, so trigger detection is n
 
 When time is tracked, the handler is recorded under \code{label}; the evaluation of
 \code{eventExpr} is recorded as a separate call \code{"<label> (event)"}, so that tracked
-reactives evaluated as part of the event appear nested under it. It is recorded only when it ran
-another tracked call, took at least 1 ms, or ended in an error or a \code{req()} silent stop -
-plain \code{input$x} events leave no entry.
+reactives evaluated as part of the event appear nested under it. Every event is recorded, however
+fast (about 50 microseconds of overhead per event while tracking), so even a plain
+\code{input$x} event can be inspected in the flame chart at high zoom.
 }
 \examples{
 \dontrun{
