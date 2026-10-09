@@ -38,11 +38,10 @@ it also includes time spent in anything left unwrapped, not just genuine Shiny o
 }
 \description{
 Splits the wall-clock time elapsed since the first tracked call in this session into time
-actually spent executing tracked user code (the sum of every top-level \code{\link{SafeObserve}}/
-\code{\link{SafeObserveEvent}} call made with \code{trackTime = TRUE}) and the remainder,
-labelled \code{untracked_time} - an approximation of time spent in Shiny's own reactive-graph
-maintenance (invalidation, scheduling, flushing) plus anything not wrapped with
-\code{trackTime = TRUE}.
+actually spent executing tracked user code (the sum of every top-level tracked \code{Safe*} call)
+and the remainder, labelled \code{untracked_time} - an approximation of time spent in Shiny's
+own reactive-graph maintenance (invalidation, scheduling, flushing) plus anything not wrapped
+by a \code{Safe*} function or not tracked.
 }
 \details{
 Nested tracked calls (e.g. a \code{SafeReactive} read inside a \code{SafeObserve}) are

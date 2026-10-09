@@ -10,13 +10,34 @@ IsSafeShinyTrackingDisabled()
 a logical scalar, \code{TRUE} if the option is exactly \code{FALSE}.
 }
 \description{
-\code{options(SafeShiny.trackTime = FALSE)} is a master kill switch, e.g. for production: wrappers
-created while it is set take the cheapest possible path for every call (the decision is made once,
-at creation), \code{\link{StartSafeShinyTracking}} does nothing, and not even an explicit
-\code{trackTime = TRUE} (or the monitoring tab) can switch tracking on. When the option is unset,
-tracking is "auto" (switchable per session at run time); when \code{TRUE}, always on.
+\code{options(SafeShiny.trackTime = FALSE)} is a master kill switch, intended for production.
+While it is set:
+\itemize{
+\item no call is ever timed: neither an explicit \code{trackTime = TRUE}, nor
+\code{\link{StartSafeShinyTracking}} (which only prints a message), nor the monitoring tab
+(\code{\link{SafeShinyTabUI}} shows a "Tracking is disabled" notice instead of the Start
+button) can switch tracking on;
+\item wrappers created while it is set take the cheapest path for every call (the decision is
+taken once, at creation). The wrapper is still there, so the cost is close to - not exactly -
+that of the plain Shiny function (about 0-1\\% in a micro-benchmark);
+\item the option is also re-checked every time a call runs, so wrappers created earlier stop
+tracking too if it is set later.
+}
+When the option is unset, tracking is "auto": nothing is timed until
+\code{\link{StartSafeShinyTracking}} is called for a session (this is what the monitoring tab
+does), and wrappers pay a small per-call check (about 2-4\\%). When it is \code{TRUE}, every
+\code{Safe*} call whose \code{trackTime} is left at its default is timed from the start
+(a call with an explicit \code{trackTime = FALSE} stays untimed).
+}
+\details{
+An app can use the function to offer the monitoring tab only where tracking is possible, e.g.
+\code{if (!IsSafeShinyTrackingDisabled() && SafeShinyTabRequested(request)) ...}. See the
+"Production versus test environment" section of the vignette for a complete setup.
 }
 \examples{
 IsSafeShinyTrackingDisabled()
+old <- options(SafeShiny.trackTime = FALSE)
+IsSafeShinyTrackingDisabled()
+options(old)
 
 }

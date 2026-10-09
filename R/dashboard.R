@@ -41,7 +41,10 @@ SafeShinyTabRequested <- function(x, param = "safeshinytab") {
 #'
 #' Use \code{SafeShinyTabUI()} / \code{SafeShinyTabServer()} as a Shiny module, or
 #' \code{SafeShinyTabPanel()} to get a ready-made \code{tabPanel()} for a \code{navbarPage()}.
-#' Combine with \code{\link{SafeShinyTabRequested}} to show it only to developers.
+#' Combine with \code{\link{SafeShinyTabRequested}} to show it only to developers. While tracking
+#' is disabled (\code{\link{IsSafeShinyTrackingDisabled}}) the tab shows a "Tracking is disabled"
+#' notice instead of the Start button; to not offer it at all, also require
+#' \code{!IsSafeShinyTrackingDisabled()} when building the UI and the server.
 #'
 #' @param id character string, the module id.
 #' @param height character string or number, maximum height of the area below the Start/Stop

@@ -159,8 +159,8 @@
 
 #' Get tracked execution-time records for a Shiny session
 #'
-#' Returns a per-label summary of every \code{\link{SafeObserve}}/\code{\link{SafeObserveEvent}}
-#' call made with \code{trackTime = TRUE} in the given session, aggregated across however many
+#' Returns a per-label summary of every tracked \code{Safe*} call (see the \code{trackTime}
+#' argument of \code{\link{SafeObserve}}) in the given session, aggregated across however many
 #' times each label has fired so far. Records from a \code{shiny::req()}/\code{validate()}
 #' silent stop and from a caught error are both included (either way, real wall-clock time was
 #' spent before execution stopped) - use \code{status} if you need to distinguish them, which
@@ -256,11 +256,10 @@ GetSafeShinyTimingRaw <- function(session = shiny::getDefaultReactiveDomain()) {
 #' Summarize tracked execution time vs. wall-clock elapsed time for a Shiny session
 #'
 #' Splits the wall-clock time elapsed since the first tracked call in this session into time
-#' actually spent executing tracked user code (the sum of every top-level \code{\link{SafeObserve}}/
-#' \code{\link{SafeObserveEvent}} call made with \code{trackTime = TRUE}) and the remainder,
-#' labelled \code{untracked_time} - an approximation of time spent in Shiny's own reactive-graph
-#' maintenance (invalidation, scheduling, flushing) plus anything not wrapped with
-#' \code{trackTime = TRUE}.
+#' actually spent executing tracked user code (the sum of every top-level tracked \code{Safe*} call)
+#' and the remainder, labelled \code{untracked_time} - an approximation of time spent in Shiny's
+#' own reactive-graph maintenance (invalidation, scheduling, flushing) plus anything not wrapped
+#' by a \code{Safe*} function or not tracked.
 #'
 #' Nested tracked calls (e.g. a \code{SafeReactive} read inside a \code{SafeObserve}) are
 #' counted only once, through their top-level ancestor, so the total is not inflated by
@@ -411,8 +410,10 @@ ResetSafeShinyTiming <- function(session = shiny::getDefaultReactiveDomain()) {
 #'
 #' @param trackTime \code{TRUE}, \code{FALSE} or \code{NA}/\code{NULL} (auto).
 #' @param domain a Shiny reactive domain (session object), or \code{NULL}.
-#' @return logical scalar. Auto means: the \code{SafeShiny.trackTime} option is \code{TRUE}, or
-#'   tracking was started for this session with \code{\link{StartSafeShinyTracking}}.
+#' @return logical scalar. Always \code{FALSE} while tracking is disabled
+#'   (\code{\link{IsSafeShinyTrackingDisabled}}). Otherwise an explicit \code{TRUE}/\code{FALSE}
+#'   wins; auto means: the \code{SafeShiny.trackTime} option is \code{TRUE}, or tracking was started
+#'   for this session with \code{\link{StartSafeShinyTracking}}.
 #' @keywords internal
 .safeShinyShouldTrack <- function(trackTime, domain) {
   if (IsSafeShinyTrackingDisabled()) return(FALSE)
@@ -427,6 +428,11 @@ ResetSafeShinyTiming <- function(session = shiny::getDefaultReactiveDomain()) {
 #' call that doesn't force \code{trackTime} on or off is timed from now on, including calls
 #' created by other packages (e.g. MMVshiny-generated observers/reactives). Because the switch is
 #' per session, other users of the same R process are not affected.
+#'
+#' If tracking is disabled globally (\code{options(SafeShiny.trackTime = FALSE)}, see
+#' \code{\link{IsSafeShinyTrackingDisabled}}), \code{StartSafeShinyTracking()} prints a message and
+#' does nothing. \code{StopSafeShinyTracking()} ends the session's tracking window and keeps the
+#' recorded timings (use \code{\link{ResetSafeShinyTiming}} to discard them).
 #'
 #' @inheritParams GetSafeShinyTiming
 #' @param reset logical, default \code{TRUE}: discard previously recorded timings first.
@@ -475,16 +481,36 @@ IsSafeShinyTracking <- function(session = shiny::getDefaultReactiveDomain()) {
 
 #' Is execution-time tracking disabled globally?
 #'
-#' \code{options(SafeShiny.trackTime = FALSE)} is a master kill switch, e.g. for production: wrappers
-#' created while it is set take the cheapest possible path for every call (the decision is made once,
-#' at creation), \code{\link{StartSafeShinyTracking}} does nothing, and not even an explicit
-#' \code{trackTime = TRUE} (or the monitoring tab) can switch tracking on. When the option is unset,
-#' tracking is "auto" (switchable per session at run time); when \code{TRUE}, always on.
+#' \code{options(SafeShiny.trackTime = FALSE)} is a master kill switch, intended for production.
+#' While it is set:
+#' \itemize{
+#'   \item no call is ever timed: neither an explicit \code{trackTime = TRUE}, nor
+#'     \code{\link{StartSafeShinyTracking}} (which only prints a message), nor the monitoring tab
+#'     (\code{\link{SafeShinyTabUI}} shows a "Tracking is disabled" notice instead of the Start
+#'     button) can switch tracking on;
+#'   \item wrappers created while it is set take the cheapest path for every call (the decision is
+#'     taken once, at creation). The wrapper is still there, so the cost is close to - not exactly -
+#'     that of the plain Shiny function (about 0-1\% in a micro-benchmark);
+#'   \item the option is also re-checked every time a call runs, so wrappers created earlier stop
+#'     tracking too if it is set later.
+#' }
+#' When the option is unset, tracking is "auto": nothing is timed until
+#' \code{\link{StartSafeShinyTracking}} is called for a session (this is what the monitoring tab
+#' does), and wrappers pay a small per-call check (about 2-4\%). When it is \code{TRUE}, every
+#' \code{Safe*} call whose \code{trackTime} is left at its default is timed from the start
+#' (a call with an explicit \code{trackTime = FALSE} stays untimed).
+#'
+#' An app can use the function to offer the monitoring tab only where tracking is possible, e.g.
+#' \code{if (!IsSafeShinyTrackingDisabled() && SafeShinyTabRequested(request)) ...}. See the
+#' "Production versus test environment" section of the vignette for a complete setup.
 #'
 #' @return a logical scalar, \code{TRUE} if the option is exactly \code{FALSE}.
 #'
 #' @examples
 #' IsSafeShinyTrackingDisabled()
+#' old <- options(SafeShiny.trackTime = FALSE)
+#' IsSafeShinyTrackingDisabled()
+#' options(old)
 #'
 #' @export
 IsSafeShinyTrackingDisabled <- function() {

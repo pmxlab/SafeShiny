@@ -33,6 +33,12 @@ call that doesn't force \code{trackTime} on or off is timed from now on, includi
 created by other packages (e.g. MMVshiny-generated observers/reactives). Because the switch is
 per session, other users of the same R process are not affected.
 }
+\details{
+If tracking is disabled globally (\code{options(SafeShiny.trackTime = FALSE)}, see
+\code{\link{IsSafeShinyTrackingDisabled}}), \code{StartSafeShinyTracking()} prints a message and
+does nothing. \code{StopSafeShinyTracking()} ends the session's tracking window and keeps the
+recorded timings (use \code{\link{ResetSafeShinyTiming}} to discard them).
+}
 \examples{
 StartSafeShinyTracking(session = NULL)
 IsSafeShinyTracking(session = NULL)

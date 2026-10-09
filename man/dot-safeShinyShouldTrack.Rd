@@ -12,8 +12,10 @@
 \item{domain}{a Shiny reactive domain (session object), or \code{NULL}.}
 }
 \value{
-logical scalar. Auto means: the \code{SafeShiny.trackTime} option is \code{TRUE}, or
-tracking was started for this session with \code{\link{StartSafeShinyTracking}}.
+logical scalar. Always \code{FALSE} while tracking is disabled
+(\code{\link{IsSafeShinyTrackingDisabled}}). Otherwise an explicit \code{TRUE}/\code{FALSE}
+wins; auto means: the \code{SafeShiny.trackTime} option is \code{TRUE}, or tracking was started
+for this session with \code{\link{StartSafeShinyTracking}}.
 }
 \description{
 Should a call be timed right now?
