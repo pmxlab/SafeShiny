@@ -35,10 +35,10 @@ test_that("trackTime = NA (default) follows the session tracking switch at run t
     expect_equal(nrow(GetSafeShinyTimingRaw(session = session)), 0)
     StartSafeShinyTracking(session = session)
     trigger(session, x = 2)
-    expect_equal(GetSafeShinyTimingRaw(session = session)$label, "obs")
+    expect_setequal(GetSafeShinyTimingRaw(session = session)$label, c("obs (event)", "obs"))  # event phase + handler
     StopSafeShinyTracking(session = session)
     trigger(session, x = 3)
-    expect_equal(nrow(GetSafeShinyTimingRaw(session = session)), 1)
+    expect_equal(nrow(GetSafeShinyTimingRaw(session = session)), 2)  # nothing new after Stop
   })
 })
 

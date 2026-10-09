@@ -189,9 +189,9 @@ SafeObserve <- function(x, onError = NULL, trackTime = NA, label = NULL, quiet =
 #'
 #' When time is tracked, the handler is recorded under \code{label}; the evaluation of
 #' \code{eventExpr} is recorded as a separate call \code{"<label> (event)"}, so that tracked
-#' reactives evaluated as part of the event appear nested under it. It is recorded only when it ran
-#' another tracked call, took at least 1 ms, or ended in an error or a \code{req()} silent stop -
-#' plain \code{input$x} events leave no entry.
+#' reactives evaluated as part of the event appear nested under it. Every event is recorded, however
+#' fast (about 50 microseconds of overhead per event while tracking), so even a plain
+#' \code{input$x} event can be inspected in the flame chart at high zoom.
 #'
 #' @inheritParams SafeObserve
 #' @param eventExpr the expression to watch for changes, exactly as for
@@ -261,12 +261,13 @@ SafeObserveEvent <- function(eventExpr, handlerExpr, onError = NULL, trackTime =
   # observer then stops quietly (req(FALSE)) without running the handler. req()/validate() silent
   # stops raised by the event expression are re-raised unchanged by errorHandler().
   # Its time is tracked as a separate call "<label> (event)" so that reactives evaluated as part of
-  # the event nest under it; trivial events are not recorded (see .safeShinyEndOrDiscardTiming()).
+  # the event nest under it. Every event is recorded while tracking, however fast, so it can be
+  # seen in the flame chart at high zoom (about 50 microseconds per event).
   eventHandlers <- .safeShinyBuildHandlers(
     label = paste0(label, " (event)"), domain = domain, onError = onError, trackTime = trackTime,
     quiet = quiet, context = "SafeObserveEvent"
   )
-  endEventFn <- function(token) .safeShinyEndOrDiscardTiming(domain, token)
+  endEventFn <- function(token) if (is.list(token)) .endSafeShinyTiming(domain, token, "ok")
   wrappedEventExpr <- bquote({
     .safeShiny_event_start <- .(eventHandlers$startFn)()
     tryCatch(

@@ -213,7 +213,7 @@ test_that("SafeObserveEvent: req() in the event expression is still a silent sto
   })
 })
 
-test_that("SafeObserveEvent tracks event evaluation as '<label> (event)', nesting reactives, only when interesting", {
+test_that("SafeObserveEvent tracks event evaluation as '<label> (event)', nesting reactives, for every event", {
   shiny::testServer(function(input, output, session) {
     ResetSafeShinyTiming(session = session)
     ev <- SafeReactive({ Sys.sleep(0.02); input$go }, label = "ev", trackTime = TRUE)
@@ -238,10 +238,13 @@ test_that("SafeObserveEvent tracks event evaluation as '<label> (event)', nestin
     expect_gte(evRow$elapsed, 0.02)
 
     ResetSafeShinyTiming(session = session)
-    trigger(session, plain = 1)                                      # trivial event: no "(event)" row
+    trigger(session, plain = 1)                                      # trivial event: recorded too
     raw <- GetSafeShinyTimingRaw(session)
     expect_true("plainobs" %in% raw$label)
-    expect_false("plainobs (event)" %in% raw$label)
+    plainEv <- raw[raw$label == "plainobs (event)", ]
+    expect_equal(nrow(plainEv), 1)
+    expect_equal(plainEv$depth, 0)
+    expect_equal(raw$depth[raw$label == "plainobs"], 0)              # handler is a sibling
 
     ResetSafeShinyTiming(session = session)
     trigger(session, explode = TRUE, go2 = 1)                        # failing event
