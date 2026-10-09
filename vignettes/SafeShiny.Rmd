@@ -99,10 +99,12 @@ Passing `trackTime = TRUE` to `SafeObserve()`/`SafeObserveEvent()` times the wra
 - all three consume real wall-clock time) and records it, keyed to the current Shiny session so
 concurrent users' timings never mix.
 
-`trackTime` defaults to `getOption("SafeShiny.trackTime", FALSE)`, so setting
-`options(SafeShiny.trackTime = TRUE)` once (before the wrappers are created) turns tracking on for
-every `Safe*` call that doesn't pass `trackTime` itself - including ones created by other
-packages such as generated observers and reactives. An explicit `trackTime = FALSE` still wins.
+`trackTime` defaults to `NA` ("auto"): the call is timed while `options(SafeShiny.trackTime = TRUE)`
+is set, or while tracking is switched on for the session (see below); `TRUE`/`FALSE` force it on/off
+for one call. Setting `options(SafeShiny.trackTime = TRUE)` once (before the wrappers are created)
+therefore turns tracking on for every `Safe*` call that doesn't pass `trackTime` itself - including
+ones created by other packages such as generated observers and reactives. An explicit
+`trackTime = FALSE` still wins.
 
 ```{r}
 server <- function(input, output, session) {
@@ -151,10 +153,13 @@ with `StopSafeShinyTracking(session)`) - decided each time the call runs, so it 
 wrappers created by other packages and never affects other users of the same R process. Every error
 caught by a `Safe*` wrapper is also recorded: `GetSafeShinyErrors()`.
 
-`options(SafeShiny.trackTime = FALSE)` is a master kill switch (e.g. for production): the decision
-is made once when each wrapper is created, so every call takes the cheapest path, and neither
-`StartSafeShinyTracking()`, an explicit `trackTime = TRUE` nor the monitoring tab can switch tracking
-on (`IsSafeShinyTrackingDisabled()`). Unset means auto; `TRUE` means always on.
+`options(SafeShiny.trackTime = FALSE)` is a master kill switch, meant for production
+(`IsSafeShinyTrackingDisabled()`): nothing is ever timed - not with an explicit `trackTime = TRUE`,
+not with `StartSafeShinyTracking()` (it only prints a message) and not from the monitoring tab (which
+then shows a "Tracking is disabled" notice instead of the Start button). Wrappers created while it is
+set take the cheapest path, decided once at creation (and the option is re-checked on every call, so
+it also stops wrappers created earlier). Unset means auto: nothing is timed until tracking is started
+for a session. `TRUE` means every call with the default `trackTime` is timed from the start.
 
 For interactive development, `SafeShinyTabPanel()` (or `SafeShinyTabUI()`/`SafeShinyTabServer()`)
 provides a ready-made monitoring tab: a Start/Stop button, the interactive flame chart, timing
@@ -186,6 +191,55 @@ inferred from a per-session stack of running tracked calls, so it is only reliab
 synchronous code (`promises`/`future` intervals interleave). Each record also carries a `type`
 (`observe`, `react`, `render` or `download`), set automatically by the wrapper; the flame chart
 fills bars by type and outlines errors/silent stops in red/amber.
+
+### Production versus test environment
+
+A typical setup: **disabled in production** (no tracking, no developer tab, minimal overhead) and
+**enabled in a test environment** (developers open the app with `?safeshinytab=1`). Let the app read
+an environment variable whose *default is `FALSE`*, so a server that is not configured explicitly
+is safe. Put this at the top of `app.R`, before any `Safe*` wrapper is created:
+
+```{r, eval = FALSE}
+local({
+  e <- toupper(Sys.getenv("MYAPP_TRACK_TIME", "FALSE"))   # unset means disabled
+  if (e %in% c("TRUE", "FALSE")) options(SafeShiny.trackTime = (e == "TRUE"))
+})   # "AUTO" leaves the option unset: tracking starts only after Start in the tab
+SAFESHINY_TAB_ALLOWED <- !SafeShiny::IsSafeShinyTrackingDisabled()
+
+ui <- function(request) {
+  tabs <- list(tabPanel("App", ...))
+  if (SAFESHINY_TAB_ALLOWED && SafeShinyTabRequested(request))
+    tabs <- c(tabs, list(SafeShinyTabPanel("monitor")))
+  do.call(navbarPage, c(list("My app"), tabs))
+}
+server <- function(input, output, session) {
+  if (SAFESHINY_TAB_ALLOWED && SafeShinyTabRequested(session)) SafeShinyTabServer("monitor")
+  ...
+}
+```
+
+| `MYAPP_TRACK_TIME` | tracking | tab with `?safeshinytab=1` | overhead (micro-benchmark) |
+|---|---|---|---|
+| unset / `FALSE` (production) | impossible | not offered | about 0-1% over plain Shiny |
+| `AUTO` | after Start in the tab | offered | about 2-4% until Start, then as for `TRUE` |
+| `TRUE` (test) | from the start; Start/Stop in the tab resets and bounds the run | offered | about 10-15% while tracking |
+
+The overhead figures come from a synthetic benchmark with trivial handlers (about 40 microseconds per
+tracked call, on top of roughly 2 ms per input change); with real handlers, which take milliseconds to seconds, the relative cost is far smaller.
+
+On the **test server**, set the variable where the R process of the app can read it and where a
+redeployment will not delete it. With Shiny Server, `~/.Renviron` of the user the apps run as
+(usually `shiny`) works:
+
+```
+# /home/shiny/.Renviron on the test server
+MYAPP_TRACK_TIME=TRUE
+```
+
+Avoid an `.Renviron` inside the app directory if you redeploy by removing and re-creating the
+directory: the file would be deleted with it. Leave the production server unconfigured. Check the
+setting from the app's own R process, e.g. `Sys.getenv("MYAPP_TRACK_TIME")` in the app's log, and
+restart the app (its R process reads the environment only at start) after changing it.
 
 ## SafeRender() / SafeRenderPlot() / SafeRenderUI() / SafeRenderTable() / SafeDownloadHandler()
 

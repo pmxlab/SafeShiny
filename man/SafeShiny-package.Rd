@@ -14,7 +14,7 @@ instead. \pkg{SafeShiny} closes that gap for observers: \code{\link{SafeObserve}
 \code{shiny::observeEvent()} that catch errors instead of letting them propagate, while
 correctly re-raising \code{shiny::req()}/\code{shiny::validate()}'s intentional silent-stop
 conditions unchanged. Both also support optional execution-time tracking
-(\code{trackTime = TRUE}), to separate time spent in application business logic from time
+(\code{trackTime}; off in production with \code{options(SafeShiny.trackTime = FALSE)}), to separate time spent in application business logic from time
 spent in Shiny's own reactive-graph maintenance - see \code{\link{GetSafeShinyTiming}} and
 \code{\link{SummarizeSafeShinyTiming}}.
 

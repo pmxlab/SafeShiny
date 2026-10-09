@@ -27,7 +27,7 @@ invisibly if nothing has been tracked yet.
 }
 \description{
 Draws a profvis-style flame chart of every tracked call
-(\code{trackTime = TRUE}) recorded so far in a session: time runs along the x-axis and
+(see \code{trackTime} in \code{\link{SafeObserve}}) recorded so far in a session: time runs along the x-axis and
 nesting depth up the y-axis, so a tracked call evaluated synchronously inside another one
 (e.g. a \code{\link{SafeReactive}} read from a \code{\link{SafeObserve}}) is drawn as a bar
 directly above its parent. Bars are filled by the kind of call (observer, reactive, render,

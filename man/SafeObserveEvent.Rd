@@ -30,7 +30,7 @@ SafeObserveEvent(
 \code{shiny::observeEvent()}.}
 
 \item{handlerExpr}{the code to run when \code{eventExpr} changes - this is the part wrapped
-in \code{tryCatch} and, when \code{trackTime = TRUE}, timed.}
+in \code{tryCatch} and, when tracked (see \code{trackTime}), timed.}
 
 \item{onError}{optional function called with the caught condition object whenever a genuine
 error is caught (not called for a \code{shiny::req()}/\code{validate()} silent stop). Use

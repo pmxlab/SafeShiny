@@ -10,7 +10,8 @@
 #' @param domain a Shiny reactive domain (session object), or \code{NULL}.
 #' @param onError optional function called with the caught condition.
 #' @param trackTime \code{TRUE}, \code{FALSE} or \code{NA} (auto, see \code{\link{SafeObserve}}):
-#'   whether to record execution time via \code{\link{.recordSafeShinyTiming}}.
+#'   whether to record execution time via \code{\link{.recordSafeShinyTiming}}. Decided each time the
+#'   call runs; never \code{TRUE} while \code{\link{IsSafeShinyTrackingDisabled}()}.
 #' @param quiet logical, whether to suppress the default \code{message()} logged when an error
 #'   is caught (the error is still caught either way - this only controls the console/log line).
 #' @param context character string, used in the default logged message (e.g. \code{"SafeObserve"}).
@@ -26,7 +27,7 @@
 #'   \code{onError()} - that case isn't a real error either way.
 #'
 #' @return a list with elements \code{startFn} (function(), returns an opaque token that is
-#'   \code{NULL} when \code{trackTime} is \code{FALSE}), \code{recordFn} (function(status,
+#'   \code{NULL} when the call is not tracked), \code{recordFn} (function(status,
 #'   startTime), where \code{startTime} is the token from \code{startFn()}) and
 #'   \code{errorHandler} (function(e, startTime)), all to be spliced into the generated
 #'   \code{tryCatch} expression via \code{bquote()}.
@@ -196,7 +197,7 @@ SafeObserve <- function(x, onError = NULL, trackTime = NA, label = NULL, quiet =
 #' @param eventExpr the expression to watch for changes, exactly as for
 #'   \code{shiny::observeEvent()}.
 #' @param handlerExpr the code to run when \code{eventExpr} changes - this is the part wrapped
-#'   in \code{tryCatch} and, when \code{trackTime = TRUE}, timed.
+#'   in \code{tryCatch} and, when tracked (see \code{trackTime}), timed.
 #' @param event.env,event.quoted,handler.env,handler.quoted,...,ignoreNULL,ignoreInit,once passed
 #'   through to \code{shiny::observeEvent()} unchanged - see \code{\link[shiny]{observeEvent}}.
 #' @param suspended,priority,domain,autoDestroy passed through to \code{shiny::observeEvent()}

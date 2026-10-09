@@ -18,8 +18,8 @@ a data.frame with columns \code{label}, \code{type} (\code{"observe"}, \code{"re
 tracked yet.
 }
 \description{
-Returns a per-label summary of every \code{\link{SafeObserve}}/\code{\link{SafeObserveEvent}}
-call made with \code{trackTime = TRUE} in the given session, aggregated across however many
+Returns a per-label summary of every tracked \code{Safe*} call (see the \code{trackTime}
+argument of \code{\link{SafeObserve}}) in the given session, aggregated across however many
 times each label has fired so far. Records from a \code{shiny::req()}/\code{validate()}
 silent stop and from a caught error are both included (either way, real wall-clock time was
 spent before execution stopped) - use \code{status} if you need to distinguish them, which

@@ -36,7 +36,10 @@ table appear; and an error log of every error caught by the \code{Safe*} wrapper
 \details{
 Use \code{SafeShinyTabUI()} / \code{SafeShinyTabServer()} as a Shiny module, or
 \code{SafeShinyTabPanel()} to get a ready-made \code{tabPanel()} for a \code{navbarPage()}.
-Combine with \code{\link{SafeShinyTabRequested}} to show it only to developers.
+Combine with \code{\link{SafeShinyTabRequested}} to show it only to developers. While tracking
+is disabled (\code{\link{IsSafeShinyTrackingDisabled}}) the tab shows a "Tracking is disabled"
+notice instead of the Start button; to not offer it at all, also require
+\code{!IsSafeShinyTrackingDisabled()} when building the UI and the server.
 }
 \examples{
 ui <- shiny::fluidPage(SafeShinyTabUI("monitor"))

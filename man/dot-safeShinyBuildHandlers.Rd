@@ -23,7 +23,8 @@ messages.}
 \item{onError}{optional function called with the caught condition.}
 
 \item{trackTime}{\code{TRUE}, \code{FALSE} or \code{NA} (auto, see \code{\link{SafeObserve}}):
-whether to record execution time via \code{\link{.recordSafeShinyTiming}}.}
+whether to record execution time via \code{\link{.recordSafeShinyTiming}}. Decided each time the
+call runs; never \code{TRUE} while \code{\link{IsSafeShinyTrackingDisabled}()}.}
 
 \item{quiet}{logical, whether to suppress the default \code{message()} logged when an error
 is caught (the error is still caught either way - this only controls the console/log line).}
@@ -43,7 +44,7 @@ condition is always re-raised unchanged regardless of \code{reraise}, and never 
 }
 \value{
 a list with elements \code{startFn} (function(), returns an opaque token that is
-\code{NULL} when \code{trackTime} is \code{FALSE}), \code{recordFn} (function(status,
+\code{NULL} when the call is not tracked), \code{recordFn} (function(status,
 startTime), where \code{startTime} is the token from \code{startFn()}) and
 \code{errorHandler} (function(e, startTime)), all to be spliced into the generated
 \code{tryCatch} expression via \code{bquote()}.
