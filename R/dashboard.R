@@ -1,22 +1,10 @@
-#' Was the SafeShiny monitoring tab requested in the URL?
-#'
-#' Lets an app show the monitoring tab only when it is opened with a query parameter such as
-#' \code{?safeshinytab=1}, e.g. \code{if (SafeShinyTabRequested(request)) ...} in a UI function, or
-#' \code{if (SafeShinyTabRequested(session)) SafeShinyTabServer("monitor")} in the server.
-#'
-#' @param x a Shiny request object (as passed to a UI function; its \code{QUERY_STRING} is used),
-#'   a Shiny session (its URL query string is read), or a query string such as
-#'   \code{"?safeshinytab=1&a=2"}.
-#' @param param character string, name of the query parameter (default \code{"safeshinytab"}).
-#' @return logical scalar, \code{TRUE} if the parameter is \code{1}, \code{true}, \code{TRUE} or
-#'   \code{yes}.
-#'
-#' @examples
-#' SafeShinyTabRequested("?safeshinytab=1")
-#' SafeShinyTabRequested("?other=1")
-#'
-#' @export
-SafeShinyTabRequested <- function(x, param = "safeshinytab") {
+#' Read the value of the SafeShiny query parameter
+#' @param x a Shiny request object, a Shiny session, or a query string, see
+#'   \code{\link{SafeShinyTabRequested}}.
+#' @param param character string, name of the query parameter.
+#' @return the lower-case parameter value, or \code{NA_character_} if absent.
+#' @keywords internal
+.safeShinyQueryValue <- function(x, param) {
   qs <- if (is.character(x)) {
     x
   } else if (!is.null(x$clientData)) {
@@ -25,10 +13,55 @@ SafeShinyTabRequested <- function(x, param = "safeshinytab") {
     x$QUERY_STRING
   }
   if (is.null(qs) || length(qs) != 1 || is.na(qs) || !nzchar(qs)) {
-    return(FALSE)
+    return(NA_character_)
   }
   val <- shiny::parseQueryString(qs)[[param]]
-  !is.null(val) && tolower(val) %in% c("1", "true", "yes")
+  if (is.null(val)) NA_character_ else tolower(val)
+}
+
+#' Was the SafeShiny monitoring tab requested in the URL?
+#'
+#' Lets an app show the monitoring tab only when it is opened with a query parameter such as
+#' \code{?safeshinytab=1}, e.g. \code{if (SafeShinyTabRequested(request)) ...} in a UI function, or
+#' \code{if (SafeShinyTabRequested(session)) SafeShinyTabServer("monitor")} in the server.
+#' \code{?safeshinytab=track} requests the tab too, and additionally starts tracking when the
+#' session starts, see \code{\link{SafeShinyTrackRequested}}.
+#'
+#' @param x a Shiny request object (as passed to a UI function; its \code{QUERY_STRING} is used),
+#'   a Shiny session (its URL query string is read), or a query string such as
+#'   \code{"?safeshinytab=1&a=2"}.
+#' @param param character string, name of the query parameter (default \code{"safeshinytab"}).
+#' @return logical scalar, \code{TRUE} if the parameter is \code{1}, \code{true}, \code{TRUE},
+#'   \code{yes} or \code{track}.
+#'
+#' @examples
+#' SafeShinyTabRequested("?safeshinytab=1")
+#' SafeShinyTabRequested("?safeshinytab=track")
+#' SafeShinyTabRequested("?other=1")
+#'
+#' @export
+SafeShinyTabRequested <- function(x, param = "safeshinytab") {
+  val <- .safeShinyQueryValue(x, param)
+  !is.na(val) && val %in% c("1", "true", "yes", "track")
+}
+
+#' Was tracking from the start of the session requested in the URL?
+#'
+#' \code{TRUE} when the app is opened with \code{?safeshinytab=track}. \code{\link{SafeShinyTabServer}}
+#' then starts execution-time tracking for the session as soon as it is created, so the Start button
+#' does not have to be pressed after the app has loaded and the session's startup is recorded too.
+#'
+#' @inheritParams SafeShinyTabRequested
+#' @return logical scalar, \code{TRUE} if the parameter is \code{track}.
+#'
+#' @examples
+#' SafeShinyTrackRequested("?safeshinytab=track")
+#' SafeShinyTrackRequested("?safeshinytab=1")
+#'
+#' @export
+SafeShinyTrackRequested <- function(x, param = "safeshinytab") {
+  val <- .safeShinyQueryValue(x, param)
+  !is.na(val) && val == "track"
 }
 
 #' SafeShiny monitoring tab (UI)
@@ -153,15 +186,26 @@ SafeShinyTabPanel <- function(id, title = "SafeShiny", height = "60%", ...) {
 #' Server side of \code{\link{SafeShinyTabUI}}. Its own outputs and observers are plain Shiny (not
 #' \code{Safe*} wrappers), so they never appear in the recorded timings.
 #'
+#' When the app is opened with \code{?safeshinytab=track} (see \code{\link{SafeShinyTrackRequested}}),
+#' tracking is started for the session as soon as this function runs, without discarding timings
+#' already recorded, and the tab opens in the "tracking" state: press Stop to see the flame chart.
+#' To record the session's startup, call \code{SafeShinyTabServer()} at the very top of the server
+#' function. It does nothing while tracking is disabled
+#' (\code{\link{IsSafeShinyTrackingDisabled}}).
+#'
 #' @param id character string, the module id (same as in \code{SafeShinyTabUI()}).
+#' @param param character string, name of the query parameter (default \code{"safeshinytab"}).
 #' @return nothing - called for its side effects (it registers the module's outputs/observers).
 #'
 #' @importFrom shiny moduleServer reactiveVal reactiveValues observeEvent renderUI renderPrint
 #' @importFrom shiny downloadHandler req
 #' @export
-SafeShinyTabServer <- function(id) {
+SafeShinyTabServer <- function(id, param = "safeshinytab") {
   shiny::moduleServer(id, function(input, output, session) {
     ns <- session$ns
+    if (!IsSafeShinyTrackingDisabled() && SafeShinyTrackRequested(session, param = param)) {
+      StartSafeShinyTracking(session = session, reset = FALSE)
+    }
     rv <- shiny::reactiveValues(tracking = IsSafeShinyTracking(session), stopped = FALSE,
                                 started = NULL, version = 0, errVersion = 0, snap = NULL)
 

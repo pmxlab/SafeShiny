@@ -4,10 +4,12 @@
 \alias{SafeShinyTabServer}
 \title{SafeShiny monitoring tab (server)}
 \usage{
-SafeShinyTabServer(id)
+SafeShinyTabServer(id, param = "safeshinytab")
 }
 \arguments{
 \item{id}{character string, the module id (same as in \code{SafeShinyTabUI()}).}
+
+\item{param}{character string, name of the query parameter (default \code{"safeshinytab"}).}
 }
 \value{
 nothing - called for its side effects (it registers the module's outputs/observers).
@@ -15,4 +17,12 @@ nothing - called for its side effects (it registers the module's outputs/observe
 \description{
 Server side of \code{\link{SafeShinyTabUI}}. Its own outputs and observers are plain Shiny (not
 \code{Safe*} wrappers), so they never appear in the recorded timings.
+}
+\details{
+When the app is opened with \code{?safeshinytab=track} (see \code{\link{SafeShinyTrackRequested}}),
+tracking is started for the session as soon as this function runs, without discarding timings
+already recorded, and the tab opens in the "tracking" state: press Stop to see the flame chart.
+To record the session's startup, call \code{SafeShinyTabServer()} at the very top of the server
+function. It does nothing while tracking is disabled
+(\code{\link{IsSafeShinyTrackingDisabled}}).
 }

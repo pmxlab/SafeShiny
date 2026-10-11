@@ -178,6 +178,14 @@ server <- function(input, output, session) {
 }
 ```
 
+Opening the app with `?safeshinytab=track` instead shows the same tab but also starts tracking for
+that session as soon as `SafeShinyTabServer()` runs, so the Start button does not have to be
+pressed and the session's startup is recorded too (press Stop to see the flame chart).
+`SafeShinyTrackRequested()` tells whether the `track` value was used. Call `SafeShinyTabServer()`
+at the very top of the server function to include everything that follows it; calls that run before
+it are not tracked. Timings already recorded are kept. It has no effect while tracking is disabled
+(see below).
+
 Use `GetSafeShinyTimingRaw()` if you need the per-call detail (including whether each call
 finished `"ok"`, hit a `"silent"` `req()`/`validate()` stop, or was caught as an `"error"`) rather
 than the aggregated-by-label view `GetSafeShinyTiming()` returns. Call `ResetSafeShinyTiming()` to
@@ -221,7 +229,7 @@ server <- function(input, output, session) {
 | `MYAPP_TRACK_TIME` | tracking | tab with `?safeshinytab=1` | overhead (micro-benchmark) |
 |---|---|---|---|
 | unset / `FALSE` (production) | impossible | not offered | about 0-1% over plain Shiny |
-| `AUTO` | after Start in the tab | offered | about 2-4% until Start, then as for `TRUE` |
+| `AUTO` | after Start in the tab, or from the start with `?safeshinytab=track` | offered | about 2-4% until Start, then as for `TRUE` |
 | `TRUE` (test) | from the start; Start/Stop in the tab resets and bounds the run | offered | about 10-15% while tracking |
 
 The overhead figures come from a synthetic benchmark with trivial handlers (about 40 microseconds per

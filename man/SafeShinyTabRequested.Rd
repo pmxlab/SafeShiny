@@ -14,16 +14,19 @@ a Shiny session (its URL query string is read), or a query string such as
 \item{param}{character string, name of the query parameter (default \code{"safeshinytab"}).}
 }
 \value{
-logical scalar, \code{TRUE} if the parameter is \code{1}, \code{true}, \code{TRUE} or
-\code{yes}.
+logical scalar, \code{TRUE} if the parameter is \code{1}, \code{true}, \code{TRUE},
+\code{yes} or \code{track}.
 }
 \description{
 Lets an app show the monitoring tab only when it is opened with a query parameter such as
 \code{?safeshinytab=1}, e.g. \code{if (SafeShinyTabRequested(request)) ...} in a UI function, or
 \code{if (SafeShinyTabRequested(session)) SafeShinyTabServer("monitor")} in the server.
+\code{?safeshinytab=track} requests the tab too, and additionally starts tracking when the
+session starts, see \code{\link{SafeShinyTrackRequested}}.
 }
 \examples{
 SafeShinyTabRequested("?safeshinytab=1")
+SafeShinyTabRequested("?safeshinytab=track")
 SafeShinyTabRequested("?other=1")
 
 }
