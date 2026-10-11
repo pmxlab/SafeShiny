@@ -7,6 +7,18 @@ test_that("SafeShinyTabRequested reads the query parameter", {
   expect_true(SafeShinyTabRequested(list(QUERY_STRING = "?safeshinytab=1")))
   expect_false(SafeShinyTabRequested(list(QUERY_STRING = "")))
   expect_true(SafeShinyTabRequested("?dev=1", param = "dev"))
+  expect_true(SafeShinyTabRequested("?safeshinytab=track"))
+  expect_true(SafeShinyTabRequested("?safeshinytab=TRACK"))
+})
+
+test_that("SafeShinyTrackRequested is TRUE only for safeshinytab=track", {
+  expect_true(SafeShinyTrackRequested("?safeshinytab=track"))
+  expect_true(SafeShinyTrackRequested("?a=1&safeshinytab=Track"))
+  expect_false(SafeShinyTrackRequested("?safeshinytab=1"))
+  expect_false(SafeShinyTrackRequested("?other=track"))
+  expect_false(SafeShinyTrackRequested(""))
+  expect_true(SafeShinyTrackRequested(list(QUERY_STRING = "?safeshinytab=track")))
+  expect_true(SafeShinyTrackRequested("?dev=track", param = "dev"))
 })
 
 test_that("Start/Stop/IsSafeShinyTracking are per session and Start resets timings", {
@@ -73,6 +85,37 @@ test_that("SafeShinyTabUI/Panel build, and the module server starts and stops tr
     expect_false(IsSafeShinyTracking(session))
     expect_match(output$summary, "SafeShiny timing summary", fixed = TRUE)
   })
+})
+
+test_that("SafeShinyTabServer starts tracking at creation for ?safeshinytab=track, keeping earlier records", {
+  testthat::local_mocked_bindings(.safeShinyQueryValue = function(x, param) "track")
+  shiny::testServer(SafeShinyTabServer, {
+    expect_true(IsSafeShinyTracking(session))
+    session$setInputs(stop = 1)
+    expect_false(IsSafeShinyTracking(session))
+    expect_match(output$summary, "SafeShiny timing summary", fixed = TRUE)
+  })
+  # records made before the module server runs (reset = FALSE) are kept
+  shiny::testServer(function(input, output, session) {
+    SafeShiny:::.recordSafeShinyTiming(domain = session, label = "early", elapsed = 0.01, status = "ok")
+    SafeShinyTabServer("m")
+  }, {
+    expect_true("early" %in% GetSafeShinyTimingRaw(session = session)$label)
+    expect_true(IsSafeShinyTracking(session))
+  })
+})
+
+test_that("?safeshinytab=1 does not start tracking, and track is ignored while tracking is disabled", {
+  testthat::local_mocked_bindings(.safeShinyQueryValue = function(x, param) "1")
+  shiny::testServer(SafeShinyTabServer, {
+    expect_false(IsSafeShinyTracking(session))
+  })
+  testthat::local_mocked_bindings(.safeShinyQueryValue = function(x, param) "track")
+  op <- options(SafeShiny.trackTime = FALSE)
+  shiny::testServer(SafeShinyTabServer, {
+    expect_false(IsSafeShinyTracking(session))
+  })
+  options(op)
 })
 
 test_that("the trimMinTime input drives the module's trimmed views; bad values count as 0", {
